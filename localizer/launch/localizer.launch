@@ -1,10 +1,10 @@
 <launch>
   <!-- ochang -->
-  <node name="map_server" pkg="map_server" type="map_server" args="$(find fusion_gpsimu)/map/ochang_grid.yaml" >
+  <node name="map_server" pkg="map_server" type="map_server" args="$(find localizer)/map/ochang_grid.yaml" >
   </node>
 
   <!-- k-city -->
-  <!-- <node name="map_server" pkg="map_server" type="map_server" args="$(find fusion_gpsimu)/map/global_map.yaml" >
+  <!-- <node name="map_server" pkg="map_server" type="map_server" args="$(find localzier)/map/global_map.yaml" >
   </node> -->
 
   <node pkg="localizer" name="localizer" type="localizer" output="screen">

@@ -4,7 +4,7 @@
 
 int main(int argc, char** argv)
 {
-    ros::init(argc,argv,"/ebimu_driver");
+    ros::init(argc,argv,"ebimu_driver");
     ebimu e;
     while(ros::ok())
     {
