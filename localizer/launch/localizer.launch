@@ -1,0 +1,47 @@
+<launch>
+  <!-- ochang -->
+  <node name="map_server" pkg="map_server" type="map_server" args="$(find fusion_gpsimu)/map/ochang_grid.yaml" >
+  </node>
+
+  <!-- k-city -->
+  <!-- <node name="map_server" pkg="map_server" type="map_server" args="$(find fusion_gpsimu)/map/global_map.yaml" >
+  </node> -->
+
+  <node pkg="localizer" name="localizer" type="localizer" output="screen">
+        <!--common parameter-->
+        <param name="calibration_frame_count"   value="50"  type="int"/>  <!-- during 40 * 0.05 second -->
+        
+        <!-- imu -->
+        <param name="imu_subscribe_topic_name"    value="/ebimu_"  type="string"/>
+
+        <!-- gnss_localizer -->
+        <param name="gps_velocity_estimate"         value="true"      type="bool"/>
+        <param name="gps_subscribe_topic_name"      value="/novatel_fix"  type="string"/>
+        <param name="gps_bestvel_subscribe_topic_name"  value="/bestvel"  type="string"/>
+        <param name="gps_bestpos_subscribe_topic_name"  value="/bestpos"  type="string"/>
+        <param name="covariance_sample_num"         value="20"         type="int"/>
+
+        <!-- erp42 -->
+        <param name="serial_vel_subscribe_topic_name"   value="/MSG_CON/Rx_Vel"  type="string"/>
+        <param name="serial_enc_subscribe_topic_name"   value="/MSG_CON/Rx_Enc"  type="string"/>
+        
+        <!-- k-city -->
+        <!-- <param name="utmOffset_x"    value="302533.174487"  type="double"/>
+        <param name="utmOffset_y"    value="4124215.34631"  type="double"/> -->
+
+        <!--ochang-->
+        <param name="utmOffset_x"    value="361001.412425"  type="double"/>
+        <param name="utmOffset_y"    value="4065821.07176"  type="double"/>
+
+        <!--test-->
+        <!-- <param name="utmOffset_x"    value="0"  type="double"/>
+        <param name="utmOffset_y"    value="0"  type="double"/> -->
+  </node>
+</launch>
+<!-- 
+// offset_ochang_map = [4065828.6567154536, 361043.5780744802]
+// offset_kcity_map = [4124215.34631, 302533.174487]
+// offset_CBNU_map = [4055009, 361875]
+// offset = [utm_y utm_x]
+// new_ochang = [4065821.07176,361001.412425]
+ -->

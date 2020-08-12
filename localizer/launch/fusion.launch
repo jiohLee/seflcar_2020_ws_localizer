@@ -1,0 +1,5 @@
+<launch>
+  <include file="$(find localizer)/launch/localizer.launch"/>
+  <include file="$(find ebimu_driver)/launch/ebimu_driver.launch"/>
+</launch>
+
