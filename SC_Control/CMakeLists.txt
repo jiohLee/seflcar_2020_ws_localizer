@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 
 add_compile_options(-std=c++11)
 
-project(sc_control)
+project(SC_Control)
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
@@ -13,6 +13,18 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
   geometry_msgs
   visualization_msgs
+)
+
+add_message_files(
+  FILES
+  selfcar_cmd.msg
+
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+    # Or other packages containing msgs
 )
 
 catkin_package(
@@ -39,4 +51,4 @@ src/main.cpp
 src/sc_serial.cpp
 )
 
-target_link_libraries(sc_control  ${catkin_LIBRARIES})
+target_link_libraries(SC_Control  ${catkin_LIBRARIES})

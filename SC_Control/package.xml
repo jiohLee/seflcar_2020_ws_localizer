@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>sc_control</name>
+  <name>SC_Control</name>
   <version>0.0.0</version>
   <description>The SC_Control package</description>
   <maintainer email="thkim@todo.todo">thkim</maintainer>

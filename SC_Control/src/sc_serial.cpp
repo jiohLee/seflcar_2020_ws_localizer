@@ -175,8 +175,7 @@ void SC_Serial::ReceiveData(std::string str)
         printf("Rx_Enc :%d\n", Rx_Enc.data);
 
         pubVel.publish(Rx_Vel);
-
-//        pubEnc.publish(Rx_Enc);
+        pubEnc.publish(Rx_Enc);
 //         pub_steer.publish( Rx_Steer);
 
     }
