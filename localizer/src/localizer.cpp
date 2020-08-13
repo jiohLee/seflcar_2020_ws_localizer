@@ -170,7 +170,8 @@ void Localizer::filter()
         {
             fStop = erp.isStop();
             ROS_INFO("ERP VEL(m/s) : %f", erp.getVelocity());
-            ROS_INFO("ERP ST(B/S/F/G) : %d", erp.getState());
+            ROS_INFO("ERP ENC : %d", erp.getEncoderValue());
+            ROS_INFO("ERP ST(S/F/B/G) : %d", erp.getState());
         }
 
         if (!fStop && !bCalibrationDone)
@@ -272,7 +273,7 @@ void Localizer::predict()
     X_next(IDX::X) = X_curr(IDX::X) + v * std::cos(yaw) * dt;
     X_next(IDX::Y) = X_curr(IDX::Y) + v * std::sin(yaw) * dt;
     X_next(IDX::YAW) = heading;
-    X_next(IDX::V) = gpsData(IDX::V);
+    X_next(IDX::V) = erp.getVelocity();
 
     Eigen::MatrixXd A = Eigen::MatrixXd::Identity(dim_x,dim_x);
     A(IDX::X, IDX::YAW) = -1 * v * dt * std::sin(yaw);
@@ -330,9 +331,9 @@ void Localizer::updateWithGate()
     kf_.getP(P_next);
 
     // measurement
-    int dim_y = 4;
-    Eigen::MatrixXd Z_ = Eigen::MatrixXd::Zero(4, 1);
-    Z_ << gpsData(IDX::X), gpsData(IDX::Y), gpsData(IDX::YAW), gpsData(IDX::V);
+    int dim_y = 2;
+    Eigen::MatrixXd Z_ = Eigen::MatrixXd::Zero(2, 1);
+    Z_ << gpsData(IDX::X), gpsData(IDX::Y);//, gpsData(IDX::YAW), gpsData(IDX::V);
 
     std::string postype = bestpos.position_type;
     ROS_INFO("POSTYPE : %s", postype.c_str());
@@ -340,21 +341,21 @@ void Localizer::updateWithGate()
     Eigen::MatrixXd C = Eigen::MatrixXd::Zero(dim_y, dim_x);
     C(IDX::X, IDX::X) = 1.0;
     C(IDX::Y, IDX::Y) = 1.0;
-    C(IDX::YAW, IDX::YAW) = 1.0;
-    C(IDX::V, IDX::V) = 1.0;
+//    C(IDX::YAW, IDX::YAW) = 1.0;
+//    C(IDX::V, IDX::V) = 1.0;
 
     Eigen::MatrixXd R = Eigen::MatrixXd::Zero(dim_y, dim_y);
     R(IDX::X, IDX::Y) = gpsCov(IDX::X, IDX::Y);
     R(IDX::Y, IDX::X) = gpsCov(IDX::Y, IDX::X);
     R(IDX::X, IDX::X) = gpsCov(IDX::X, IDX::X);
     R(IDX::Y, IDX::Y) = gpsCov(IDX::Y, IDX::Y);
-    R(IDX::YAW, IDX::YAW) = gpsCov(IDX::YAW, IDX::YAW);
-    R(IDX::V, IDX::V) = gpsCov(IDX::V, IDX::V);
+//    R(IDX::YAW, IDX::YAW) = gpsCov(IDX::YAW, IDX::YAW);
+//    R(IDX::V, IDX::V) = gpsCov(IDX::V, IDX::V);
     std::cout << "R : \n" << R << std::endl;
     R *= 500;
 
     double yawVariance = gpsCov(IDX::YAW, IDX::YAW); // to degree
-    double gate_yaw = 0.018;
+    double gate_yaw = 0.025;
     if (bCalibrationDone)
     {
         if (yawVariance < gate_yaw * gate_yaw) // gps yaw estimation stable
@@ -382,7 +383,10 @@ void Localizer::updateWithGate()
     }
 
     const int dim_update = 2;
-    if (kf_.update(Z_.block(0,0,dim_update,1), C.block(0,0,dim_update,dim_x), R.block(0,0,dim_update,dim_update)))
+    Eigen::MatrixXd Z_update = Z_.block(0,0,dim_update,1);
+    Eigen::MatrixXd C_update = C.block(0,0,dim_update,dim_x);
+    Eigen::MatrixXd R_update = R.block(0,0,dim_update,dim_update);
+    if (kf_.update(Z_update, C_update, R_update))
     {
         ROS_INFO("UPDATE ESTIMATION DONE");
     }

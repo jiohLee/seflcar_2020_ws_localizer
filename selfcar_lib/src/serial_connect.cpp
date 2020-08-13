@@ -16,6 +16,7 @@ bool connect(std::string port_name, int baud_rate,serial::Serial& serialPort)
     if(valid(serialPort))
     {
         ROS_INFO("Cannot Connect USB Device");
+        ros::shutdown();
         return false;
     }
     try
@@ -31,6 +32,7 @@ bool connect(std::string port_name, int baud_rate,serial::Serial& serialPort)
     catch (const std::exception& e)
     {
         ROS_INFO("Cannot Connect USB Debice");
+        ros::shutdown();
         return false;
     }
 }

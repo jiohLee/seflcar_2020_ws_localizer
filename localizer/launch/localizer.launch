@@ -1,7 +1,7 @@
 <launch>
   <!-- ochang -->
-  <node name="map_server" pkg="map_server" type="map_server" args="$(find localizer)/map/ochang_grid.yaml" >
-  </node>
+  <!-- <node name="map_server" pkg="map_server" type="map_server" args="$(find localizer)/map/ochang_grid.yaml" >
+  </node> -->
 
   <!-- k-city -->
   <!-- <node name="map_server" pkg="map_server" type="map_server" args="$(find localzier)/map/global_map.yaml" >
@@ -26,12 +26,12 @@
         <param name="serial_enc_subscribe_topic_name"   value="/MSG_CON/Rx_Enc"  type="string"/>
         
         <!-- k-city -->
-        <!-- <param name="utmOffset_x"    value="302533.174487"  type="double"/>
-        <param name="utmOffset_y"    value="4124215.34631"  type="double"/> -->
+        <param name="utmOffset_x"    value="302533.174487"  type="double"/>
+        <param name="utmOffset_y"    value="4124215.34631"  type="double"/>
 
         <!--ochang-->
-        <param name="utmOffset_x"    value="361001.412425"  type="double"/>
-        <param name="utmOffset_y"    value="4065821.07176"  type="double"/>
+        <!-- <param name="utmOffset_x"    value="361001.412425"  type="double"/>
+        <param name="utmOffset_y"    value="4065821.07176"  type="double"/> -->
 
         <!--test-->
         <!-- <param name="utmOffset_x"    value="0"  type="double"/>

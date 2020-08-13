@@ -13,7 +13,7 @@ public:
     bool isStop();
     bool isERPavailable();
     const double getVelocity();
-    const int getEncoderVelue();
+    const int getEncoderValue();
     const int getState();
 private:
     void velCallback(const std_msgs::Int16::ConstPtr& msg);
@@ -21,8 +21,8 @@ private:
 
     enum IDX
     {
-        FORWARD = 0,
-        STOP = 1,
+        STOP = 0,
+        FORWARD = 1,
         BACKWARD = 2,
         GO = 3
     };

@@ -33,7 +33,7 @@ const double ERP42::getVelocity()
 }
 
 
-const int ERP42::getEncoderVelue() { return enc.data; }
+const int ERP42::getEncoderValue() { return enc.data; }
 
 const int ERP42::getState() { return state; }
 
@@ -59,13 +59,16 @@ void ERP42::encCallback(const std_msgs::Int32::ConstPtr &msg)
 {
     encEbable = true;
     std_msgs::Int32 tmp = *msg;
-    if(tmp.data > enc.data)
+    if(tmp.data > 3000)
     {
-        state = IDX::FORWARD;
-    }
-    else if(tmp.data < enc.data)
-    {
-        state = IDX::BACKWARD;
+        if(0 < tmp.data - enc.data  && tmp.data - enc.data < 100)
+        {
+            state = IDX::FORWARD;
+        }
+        else if(-100 < tmp.data - enc.data  && tmp.data - enc.data < 0)
+        {
+            state = IDX::BACKWARD;
+        }
     }
     enc = *msg;
 }
