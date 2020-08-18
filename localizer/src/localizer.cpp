@@ -69,6 +69,9 @@ Localizer::Localizer()
     X_prev = Eigen::MatrixXd::Zero(dim_x, 1);
     bKalmanInit = true;
 
+    //other
+    seq = 0;
+
     std::cout.precision(15);
 }
 
@@ -98,6 +101,7 @@ void Localizer::gpsCallback(const sensor_msgs::NavSatFix::ConstPtr &msg)
         bInitgps = false;
         return;
     }
+
     double theta = std::atan2(utm_y_meas - gpsData(IDX::Y), utm_x_meas - gpsData(IDX::X));
     gpsData(IDX::X) = utm_x_meas;
     gpsData(IDX::Y) = utm_y_meas;
@@ -117,6 +121,7 @@ void Localizer::gpsCallback(const sensor_msgs::NavSatFix::ConstPtr &msg)
 
     filter();
     visualizerCallback();
+
     isGPSavailable = false;
 }
 
@@ -143,7 +148,7 @@ void Localizer::filter()
 {
     if (isGPSavailable)
     {
-        ROS_INFO("GET GPS DATA");
+        ROS_INFO("GET GPS DATA, SEQ : %lu", seq++);
 
         Eigen::MatrixXd X_curr = Eigen::MatrixXd::Zero(dim_x,1);
         Eigen::MatrixXd X_next = Eigen::MatrixXd::Zero(dim_x,1);
@@ -169,9 +174,12 @@ void Localizer::filter()
         if(erp.isERPavailable())
         {
             fStop = erp.isStop();
+            ROS_INFO("ERP MODE : %s", erp.getAorM().c_str());
+            ROS_INFO("ERP ESTOP : %s", erp.getEstop().c_str());
+            ROS_INFO("ERP GEAR : %s", erp.getGear().c_str());
             ROS_INFO("ERP VEL(m/s) : %f", erp.getVelocity());
-            ROS_INFO("ERP ENC : %d", erp.getEncoderValue());
-            ROS_INFO("ERP ST(S/F/B/G) : %d", erp.getState());
+            ROS_INFO("ERP ENC : %d", erp.getEncoder());
+            ROS_INFO("ERP STATE : %s", erp.getState().c_str());
         }
 
         if (!fStop && !bCalibrationDone)
@@ -193,6 +201,7 @@ void Localizer::filter()
 
         // predict
         predict();
+        // update
         updateWithGate();
 
         Eigen::MatrixXd result;
@@ -229,7 +238,6 @@ void Localizer::filter()
         pos.covariance[6*4 + 4] = imu.orientation_covariance[4];
         pos.covariance[6*5 + 5] = imu.orientation_covariance[8];
         pubPose.publish(pos);
-
     }
     else
     {
@@ -331,31 +339,25 @@ void Localizer::updateWithGate()
     kf_.getP(P_next);
 
     // measurement
-    int dim_y = 2;
-    Eigen::MatrixXd Z_ = Eigen::MatrixXd::Zero(2, 1);
-    Z_ << gpsData(IDX::X), gpsData(IDX::Y);//, gpsData(IDX::YAW), gpsData(IDX::V);
+    Eigen::MatrixXd Z_ = Eigen::MatrixXd::Zero(4, 1);
+    Z_ << gpsData(IDX::X), gpsData(IDX::Y), gpsData(IDX::YAW), gpsData(IDX::V);
 
     std::string postype = bestpos.position_type;
     ROS_INFO("POSTYPE : %s", postype.c_str());
 
-    Eigen::MatrixXd C = Eigen::MatrixXd::Zero(dim_y, dim_x);
+    Eigen::MatrixXd C = Eigen::MatrixXd::Zero(2, dim_x);
     C(IDX::X, IDX::X) = 1.0;
     C(IDX::Y, IDX::Y) = 1.0;
-//    C(IDX::YAW, IDX::YAW) = 1.0;
-//    C(IDX::V, IDX::V) = 1.0;
 
-    Eigen::MatrixXd R = Eigen::MatrixXd::Zero(dim_y, dim_y);
+    Eigen::MatrixXd R = Eigen::MatrixXd::Zero(2, 2);
     R(IDX::X, IDX::Y) = gpsCov(IDX::X, IDX::Y);
     R(IDX::Y, IDX::X) = gpsCov(IDX::Y, IDX::X);
     R(IDX::X, IDX::X) = gpsCov(IDX::X, IDX::X);
     R(IDX::Y, IDX::Y) = gpsCov(IDX::Y, IDX::Y);
-//    R(IDX::YAW, IDX::YAW) = gpsCov(IDX::YAW, IDX::YAW);
-//    R(IDX::V, IDX::V) = gpsCov(IDX::V, IDX::V);
-    std::cout << "R : \n" << R << std::endl;
     R *= 500;
 
     double yawVariance = gpsCov(IDX::YAW, IDX::YAW); // to degree
-    double gate_yaw = 0.025;
+    double gate_yaw = 0.02;
     if (bCalibrationDone)
     {
         if (yawVariance < gate_yaw * gate_yaw) // gps yaw estimation stable
@@ -363,10 +365,10 @@ void Localizer::updateWithGate()
             ROS_INFO("GOOD GPS YAW : %f, var : %f",gpsData(IDX::YAW) * 180 / M_PI, yawVariance);
             headings += gpsData(IDX::YAW);
             frameCount++;
-
-            if(frameCount >= 10) // get yaw bias
+            const int recal = 5;
+            if(frameCount >= recal) // get yaw bias
             {
-                qYawBias.setRPY(0,0,headings / 10);
+                qYawBias.setRPY(0,0,headings / recal);
                 qYawBias.normalize();
                 headings = 0;
                 frameCount = 0;
@@ -382,6 +384,19 @@ void Localizer::updateWithGate()
         }
     }
 
+    Eigen::MatrixXd mahalanobis = (Z_ - X_next).transpose() * P_next.inverse() * (Z_ - X_next);
+    const double distance = mahalanobis(0);
+    const double gate = 0.05;
+
+    if(distance < gate)
+    {
+        ROS_INFO("distance : %f", distance);
+    }
+    else
+    {
+        ROS_WARN("distance : %f", distance);
+    }
+
     const int dim_update = 2;
     Eigen::MatrixXd Z_update = Z_.block(0,0,dim_update,1);
     Eigen::MatrixXd C_update = C.block(0,0,dim_update,dim_x);
@@ -394,9 +409,6 @@ void Localizer::updateWithGate()
     {
         ROS_WARN("UPDATE ESTIMATION FAIL");
     }
-
-
-
 }
 
 void Localizer::visualizerCallback()

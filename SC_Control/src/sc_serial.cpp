@@ -51,10 +51,10 @@ SC_Serial::SC_Serial(std::string port_name, int baudrate)
     Tx_break = 1;
     Tx_gear = 0;
 
-    pubAorM = node_.advertise<std_msgs::String>("MSG_CON/Rx_AorM", 1);
-    pubEstop = node_.advertise<std_msgs::String>("MSG_CON/Rx_Estop", 1);
-    pubGear = node_.advertise<std_msgs::String>("MSG_CON/Rx_Gear", 1);
-    pubGear = node_.advertise<std_msgs::Int8>("/MSG_CON/Rx_Gear", 1);
+    pubAorM = node_.advertise<std_msgs::String>("/MSG_CON/Rx_AorM", 1);
+    pubEstop = node_.advertise<std_msgs::String>("/MSG_CON/Rx_Estop", 1);
+    pubGear = node_.advertise<std_msgs::String>("/MSG_CON/Rx_Gear", 1);
+    pubBreak = node_.advertise<std_msgs::Int8>("/MSG_CON/Rx_Break", 1);
     pubVel = node_.advertise<std_msgs::Int16>("/MSG_CON/Rx_Vel", 1);
     pubSteer = node_.advertise<std_msgs::Int16>("/MSG_CON/Rx_Steer", 1);
     pubEnc = node_.advertise<std_msgs::Int32>("/MSG_CON/Rx_Enc", 1);
@@ -113,7 +113,7 @@ void SC_Serial::ReceiveData(std::string str)
         uint8_t AorM = (uint8_t)str.c_str()[3];
         ROS_INFO("ERP MODE (M/A) : %d, %X(HEX)", AorM, AorM);
         uint8_t estop = (uint8_t)str.c_str()[4];
-        ROS_INFO("ERP ESTOP (ON/OFF) : %d, %X(HEX)", estop ,estop);
+        ROS_INFO("ERP ESTOP (OFF/ON) : %d, %X(HEX)", estop ,estop);
         uint8_t gear = (uint8_t)str.c_str()[5];
         ROS_INFO("ERP GEAR (F/N/B) : %d %X(HEX)", gear, gear);
 
@@ -127,57 +127,25 @@ void SC_Serial::ReceiveData(std::string str)
         ROS_INFO("ERP BREAK : %d, %X(HEX)", brk, brk);
 
         int32_t enc = (uint8_t)str.c_str()[11] | (uint8_t)str.c_str()[12] << 8 |
-                       (uint8_t)str.c_str()[13] << 16 | (uint8_t)str.c_str()[11] << 24;
-        ROS_INFO("ERP BREAK : %d, %X %X %X %X(HEX)", enc,
+                       (uint8_t)str.c_str()[13] << 16 | (uint8_t)str.c_str()[14] << 24;
+        ROS_INFO("ERP ENC : %d, %X %X %X %X(HEX)", enc,
                  (uint8_t)str.c_str()[11], (uint8_t)str.c_str()[12], (uint8_t)str.c_str()[13], (uint8_t)str.c_str()[14]);
 
         Rx_AorM.data = AorM;
         Rx_Estop.data = estop;
         Rx_Gear.data = gear;
-//        Rx_Vel.data = vel;
-        Rx_Steer.data = steer;
+        Rx_Vel.data = vel;
+        Rx_Steer.data = -steer;
         Rx_Break.data = brk;
-//        Rx_Enc.data = enc;
+        Rx_Enc.data = enc;
 
         pubAorM.publish(Rx_AorM);
         pubEstop.publish(Rx_Estop);
         pubGear.publish(Rx_Gear);
-//        pubVel.publish(Rx_Vel);
+        pubVel.publish(Rx_Vel);
         pubSteer.publish(Rx_Steer);
         pubBreak.publish(Rx_Break);
-//        pubEnc.publish(Rx_Enc);
-
-//        printf("vel:\t");
-//        printf("%d \n", (unsigned char)str[6]);
-//        printf("steer:\t");
-//        printf("%X ", str[8]);
-//        printf("%X \n", str[9]);
-//        printf("break:\t");
-//        printf("%d \n", str[10]);
-
-//        printf("enc:\t");
-//        printf("%X ", (unsigned char)str[11]);
-//        printf("%X ", (unsigned char)str[12]);
-//        printf("%X ", (unsigned char)str[13]);
-//        printf("%X \n", (unsigned char)str[14]);
-
-        Rx_Vel.data = (unsigned char)str[6]; //(str[6] & 0xff)+(str[7] <<8); //((str[6] & 0xf0U) >> 4)*16 + (str[6] & 0x0fU);
-        Rx_Steer.data = ((~str[9] & 0xf0U) >> 4) * 4096 + (~str[9] & 0x0fU) * 256 + ((~str[8] & 0xf0U) >> 4) * 16 + (~str[8] & 0x0fU) + 1;
-
-        uint8_t b, c, d, e;
-        b = (str[11] & 0xffU);
-        c = (str[12] & 0xffU);
-        d = (str[13] & 0xffU);
-        e = (str[14] & 0xffU);
-        Rx_Enc.data = (e << 24) + (d << 16) + (c << 8) + b;
-        printf("INPutvel : %d , Rx_vel :%d    break : %d\n", this->Tx_Vel, Rx_Vel.data, str[10]);
-        printf("Rx_Steer :%d      input_steering : %d   \n", Rx_Steer.data, this->Tx_Steer);
-        printf("Rx_Enc :%d\n", Rx_Enc.data);
-
-        pubVel.publish(Rx_Vel);
         pubEnc.publish(Rx_Enc);
-//         pub_steer.publish( Rx_Steer);
-
     }
 }
 

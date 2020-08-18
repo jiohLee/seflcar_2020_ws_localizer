@@ -20,10 +20,6 @@
         <param name="gps_bestvel_subscribe_topic_name"  value="/bestvel"  type="string"/>
         <param name="gps_bestpos_subscribe_topic_name"  value="/bestpos"  type="string"/>
         <param name="covariance_sample_num"         value="20"         type="int"/>
-
-        <!-- erp42 -->
-        <param name="serial_vel_subscribe_topic_name"   value="/MSG_CON/Rx_Vel"  type="string"/>
-        <param name="serial_enc_subscribe_topic_name"   value="/MSG_CON/Rx_Enc"  type="string"/>
         
         <!-- k-city -->
         <param name="utmOffset_x"    value="302533.174487"  type="double"/>

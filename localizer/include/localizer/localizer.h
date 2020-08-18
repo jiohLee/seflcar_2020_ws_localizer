@@ -118,4 +118,7 @@ private:
     // constants
     static const double imuUpdateRate;    // 0.016 second
     static const double gpsUpdateRate;    // 0.016 second
+
+    // other
+    unsigned long int seq;
 };

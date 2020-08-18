@@ -1,7 +1,7 @@
 <launch>
     <node pkg="ebimu_driver" name="ebimu_node" type="ebimu_node">
         <param name="publish_topic_name"    value="/ebimu_"  type="string"/>
-        <param name="port_name" value="/dev/ttyUSB0"    type="string"/>
+        <param name="port_name" value="/dev/ttyUSB1"    type="string"/>
         <param name="baud_rate" value="921600"  type="int"/>
         <param name="gyrometer_calibration"     value="true"    type="bool"/>
         <param name="accelerometer_calibration" value="true"    type="bool"/>

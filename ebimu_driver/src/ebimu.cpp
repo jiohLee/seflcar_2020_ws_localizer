@@ -34,7 +34,7 @@ ebimu::ebimu()
     {
         serialPort.write("<sog1>"); // show gyrometer value
         rate.sleep();
-        serialPort.write("<soa2>"); // show acclerometer value
+        serialPort.write("<soa3>"); // show acclerometer value
         rate.sleep();
         serialPort.write("<sem2>"); // magnetometer on
         rate.sleep();
