@@ -19,7 +19,7 @@
         <param name="gps_subscribe_topic_name"      value="/novatel_fix"  type="string"/>
         <param name="gps_bestvel_subscribe_topic_name"  value="/bestvel"  type="string"/>
         <param name="gps_bestpos_subscribe_topic_name"  value="/bestpos"  type="string"/>
-        <param name="covariance_sample_num"         value="20"         type="int"/>
+        <param name="covariance_sample_num"         value="25"         type="int"/>
         
         <!-- k-city -->
         <param name="utmOffset_x"    value="302533.174487"  type="double"/>

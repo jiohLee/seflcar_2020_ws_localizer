@@ -103,6 +103,8 @@ void Localizer::gpsCallback(const sensor_msgs::NavSatFix::ConstPtr &msg)
     }
 
     double theta = std::atan2(utm_y_meas - gpsData(IDX::Y), utm_x_meas - gpsData(IDX::X));
+    if (erp.getState() == "BACKWARD") theta += M_PI;
+    theta = std::atan2(sin(theta), cos(theta));
     gpsData(IDX::X) = utm_x_meas;
     gpsData(IDX::Y) = utm_y_meas;
     gpsData(IDX::YAW) = theta;
@@ -345,19 +347,24 @@ void Localizer::updateWithGate()
     std::string postype = bestpos.position_type;
     ROS_INFO("POSTYPE : %s", postype.c_str());
 
-    Eigen::MatrixXd C = Eigen::MatrixXd::Zero(2, dim_x);
+    Eigen::MatrixXd C = Eigen::MatrixXd::Zero(4, dim_x);
     C(IDX::X, IDX::X) = 1.0;
     C(IDX::Y, IDX::Y) = 1.0;
+    C(IDX::YAW, IDX::YAW) = 1.0;
+    C(IDX::V, IDX::V) = 1.0;
 
-    Eigen::MatrixXd R = Eigen::MatrixXd::Zero(2, 2);
+    Eigen::MatrixXd R = Eigen::MatrixXd::Zero(4, 4);
     R(IDX::X, IDX::Y) = gpsCov(IDX::X, IDX::Y);
     R(IDX::Y, IDX::X) = gpsCov(IDX::Y, IDX::X);
     R(IDX::X, IDX::X) = gpsCov(IDX::X, IDX::X);
     R(IDX::Y, IDX::Y) = gpsCov(IDX::Y, IDX::Y);
+    R(IDX::YAW, IDX::YAW) = gpsCov(IDX::YAW, IDX::YAW);
+    R(IDX::V, IDX::V) = gpsCov(IDX::V, IDX::V);
+
     R *= 500;
 
     double yawVariance = gpsCov(IDX::YAW, IDX::YAW); // to degree
-    double gate_yaw = 0.02;
+    double gate_yaw = 0.025;
     if (bCalibrationDone)
     {
         if (yawVariance < gate_yaw * gate_yaw) // gps yaw estimation stable
@@ -366,7 +373,7 @@ void Localizer::updateWithGate()
             headings += gpsData(IDX::YAW);
             frameCount++;
             const int recal = 5;
-            if(frameCount >= recal) // get yaw bias
+            if(frameCount >= recal && erp.getState() == "FORWARD") // get yaw bias
             {
                 qYawBias.setRPY(0,0,headings / recal);
                 qYawBias.normalize();
@@ -401,13 +408,17 @@ void Localizer::updateWithGate()
     Eigen::MatrixXd Z_update = Z_.block(0,0,dim_update,1);
     Eigen::MatrixXd C_update = C.block(0,0,dim_update,dim_x);
     Eigen::MatrixXd R_update = R.block(0,0,dim_update,dim_update);
-    if (kf_.update(Z_update, C_update, R_update))
+    double vel = erp.getVelocity();
+    if (vel > 0.5 || vel < -0.17)
     {
-        ROS_INFO("UPDATE ESTIMATION DONE");
-    }
-    else
-    {
-        ROS_WARN("UPDATE ESTIMATION FAIL");
+        if (kf_.update(Z_update, C_update, R_update))
+        {
+            ROS_INFO("UPDATE ESTIMATION DONE");
+        }
+        else
+        {
+            ROS_WARN("UPDATE ESTIMATION FAIL");
+        }
     }
 }
 
