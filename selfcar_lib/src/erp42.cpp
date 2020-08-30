@@ -28,6 +28,11 @@ ERP42::ERP42(ros::NodeHandle &node, ros::NodeHandle &prv_node)
     steerEnable = false;
     encEbable = false;
     state = IDX::STOP;
+
+    steerSample = Eigen::MatrixXd::Zero(10,1);
+    steerCov = Eigen::MatrixXd::Zero(1,1);
+    velSample = Eigen::MatrixXd::Zero(10,1);
+    velCov = Eigen::MatrixXd::Zero(1,1);
 }
 
 bool ERP42::isStop()
@@ -111,7 +116,19 @@ const double ERP42::getVelocity()
     }
 }
 
+const double ERP42::getVelocityCovariance()
+{
+    if (velCov(0) != 0 ) return velCov(0);
+    return 0.0005;
+}
+
 const int ERP42::getSteer() { return steer.data; }
+
+const double ERP42::getSteerCovariance()
+{
+    if (steerCov(0) != 0) return steerCov(0);
+    return 0.0005;
+}
 
 const int ERP42::getEncoder()
 {
@@ -158,9 +175,13 @@ void ERP42::breakCallback(const std_msgs::Int8::ConstPtr &msg)
 
 void ERP42::velCallback(const std_msgs::Int16::ConstPtr &msg)
 {
-    velEnable = true;
-    std_msgs::Int16 tmp = *msg;
-    if (tmp.data == 0)
+    vel = *msg;
+    if(!velEnable)
+    {
+        velSample = Eigen::MatrixXd::Constant(10,1,vel.data / 10 * 1000 / 3600);
+    }
+
+    if (vel.data == 0)
     {
         state = IDX::STOP;
     }
@@ -171,12 +192,26 @@ void ERP42::velCallback(const std_msgs::Int16::ConstPtr &msg)
             state = IDX::GO;
         }
     }
-    vel = *msg;
+
+    Eigen::MatrixXd Z_ = Eigen::MatrixXd::Zero(1,1);
+    Z_ << vel.data / 10 * 1000.0 / 3600.0;
+    getCovariance(velSample, Z_, velCov);
+
+    velEnable = true;
 }
 
 void ERP42::steerCallback(const std_msgs::Int16::ConstPtr &msg)
 {
     steer = *msg;
+    if (!steerEnable)
+    {
+        steerSample = Eigen::MatrixXd::Constant(10,1,steer.data / 71);
+    }
+
+    Eigen::MatrixXd Z_ = Eigen::MatrixXd::Zero(1,1);
+    Z_ << steer.data / 71;
+    getCovariance(steerSample, Z_, steerCov);
+
     steerEnable = true;
 }
 

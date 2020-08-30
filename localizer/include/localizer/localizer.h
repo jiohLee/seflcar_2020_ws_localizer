@@ -63,7 +63,13 @@ private:
     // imu - data
     sensor_msgs::Imu imu;
     double localHeading;
+    double wz_dt = 0;
+    Eigen::MatrixXd wzdtSample;
+    Eigen::MatrixXd wzdtCov;
     double headings;
+    ros::Time timeIMUprev;
+    double timeIMUelapsed;
+    int index = 0;
     tf2::Quaternion qYawBias;
 
     // imu - param
@@ -72,14 +78,29 @@ private:
 
     // imu - flag
     bool bCalibrationDone;
+    bool bIMUavailable;
 
     // gps - data
+    int dim_gps = 4;
+    struct GPS
+    {
+        enum IDX
+        {
+            X = 0,
+            Y = 1,
+            YAW = 2,
+            V = 3
+        };
+    };
+    typedef GPS::IDX GPSIDX;
     sensor_msgs::NavSatFix gps;
     novatel_gps_msgs::NovatelVelocity bestvel;
     novatel_gps_msgs::NovatelPosition bestpos;
     Eigen::MatrixXd gpsSample;
     Eigen::MatrixXd gpsData; // x y theta velocity
     Eigen::MatrixXd gpsCov; // covariance;
+    ros::Time timeGPSprev;
+    double timeGPSelapsed;
     int sampleNum;
 
     // gps - flag
@@ -98,16 +119,21 @@ private:
 
     // KalmanFilter
     KalmanFilter kf_;
-    int dim_x = 4;
     Eigen::MatrixXd X_prev;
     Eigen::MatrixXd P_prev;
-    enum IDX
+    int dim_kf = 5;
+    struct KF
     {
-        X = 0,
-        Y = 1,
-        YAW = 2,
-        V = 3
+        enum IDX
+        {
+            X = 0,
+            Y = 1,
+            YAW = 2,
+            DYAW = 3,
+            VX = 4
+        };
     };
+    typedef KF::IDX KFIDX;
     bool bKalmanInit;
 
     // visualizer

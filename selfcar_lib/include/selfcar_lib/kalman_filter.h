@@ -10,17 +10,6 @@
  * @date 2019.05.01
  */
 
-
-#include <eigen3/Eigen/Core>
-#include <eigen3/Eigen/LU>
-
-/**
- * @file kalman_filter.h
- * @brief kalman filter class
- * @author Takamasa Horibe
- * @date 2019.05.01
- */
-
 class KalmanFilter
 {
 public:

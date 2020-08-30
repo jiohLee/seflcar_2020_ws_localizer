@@ -32,9 +32,19 @@ void getCovariance(Eigen::MatrixXd &sample, Eigen::MatrixXd &data, Eigen::Matrix
     R = (deviation.transpose() * deviation) / static_cast<double>(sample.rows()); // covariance matrix
 }
 
-#endif // COVARIANCE_H
+void getCovariance(Eigen::MatrixXd &sample, Eigen::MatrixXd &R)
+{
+    Eigen::MatrixXd deviation = sample.rowwise() - sample.colwise().mean();
+    R = (deviation.transpose() * deviation) / static_cast<double>(sample.rows()); // covariance matrix
+}
 
 void getAverage(Eigen::MatrixXd &sample, Eigen::MatrixXd &avg)
 {
     avg = sample.colwise().mean();
 }
+
+#endif // COVARIANCE_H
+
+
+
+

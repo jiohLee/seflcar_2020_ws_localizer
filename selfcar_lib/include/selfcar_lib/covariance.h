@@ -9,6 +9,7 @@
 
 void updateSample(Eigen::MatrixXd &sample, Eigen::MatrixXd &data);
 void getCovariance(Eigen::MatrixXd &sample, Eigen::MatrixXd &data, Eigen::MatrixXd &R);
+void getCovariance(Eigen::MatrixXd &sample, Eigen::MatrixXd &R);
 void getAverage(Eigen::MatrixXd& sample, Eigen::MatrixXd& avg);
 
 #endif // COVARIANCE_H

@@ -7,10 +7,14 @@
 #include <std_msgs/Int32.h>
 #include <std_msgs/String.h>
 
+#include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/LU>
+
+#include "covariance.h"
+
 class ERP42
 {
 public:
-
     ERP42(ros::NodeHandle& node, ros::NodeHandle& prv_node);
     bool isStop();
     bool isERPavailable();
@@ -19,9 +23,12 @@ public:
     const std::string getGear();
     const int getBreak();
     const double getVelocity();
+    const double getVelocityCovariance();
     const int getSteer();
+    const double getSteerCovariance();
     const int getEncoder();
     const std::string getState();
+
 private:
     void aormCallback(const std_msgs::String::ConstPtr& msg);
     void estopCallback(const std_msgs::String::ConstPtr& msg);
@@ -59,6 +66,10 @@ private:
     std_msgs::Int16 vel;
     std_msgs::Int16 steer;
     std_msgs::Int32 enc;
+    Eigen::MatrixXd steerSample;
+    Eigen::MatrixXd steerCov;
+    Eigen::MatrixXd velSample;
+    Eigen::MatrixXd velCov;
     int state;
 
     // flag
