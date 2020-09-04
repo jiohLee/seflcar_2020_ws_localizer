@@ -210,7 +210,7 @@ void Localizer::filter()
             frameCount++;
             qYawBias.setRPY(0,0, headings / frameCount);
             qYawBias.normalize();
-
+            localHeading = 0;
             if (frameCount >= calibrationFrameCount)
             {
                 bCalibrationDone = true;
@@ -284,9 +284,18 @@ void Localizer::predict()
     const double vx = X_curr(KFIDX::VX);
     const double dt = timeGPSelapsed;
 
+//    if (!bIMUavailable)
+//    {
+//        localHeading += yaw_dt;
+//        ROS_ERROR("HIHIHI");
+//    }
+
+    double heading = std::atan2(std::sin(localHeading + tf2::getYaw(qYawBias)), std::cos(localHeading + tf2::getYaw(qYawBias)));
+
     X_next(KFIDX::X) = X_curr(KFIDX::X) + vx * cos(yaw) * dt;  // dx = v * cos(yaw)
     X_next(KFIDX::Y) = X_curr(KFIDX::Y) + vx * sin(yaw) * dt;  // dy = v * sin(yaw)
-    X_next(KFIDX::YAW) = X_curr(KFIDX::YAW) + yaw_dt;                    // dyaw = omega + omega_bias
+//    X_next(KFIDX::YAW) = heading;
+    X_next(KFIDX::YAW) = X_curr(KFIDX::YAW) + yaw_dt;
     X_next(KFIDX::DYAW) = yaw_dt;
     X_next(KFIDX::VX) = vx;
 
@@ -352,6 +361,7 @@ void Localizer::updateWithGate()
     Eigen::MatrixXd Z_ = Eigen::MatrixXd::Zero(dim_meas, 1);
     double heading = std::atan2(std::sin(localHeading + tf2::getYaw(qYawBias)), std::cos(localHeading + tf2::getYaw(qYawBias)));
     double erpwzdt = erp.getVelocity() / 1.04 * std::tan(((-1 * erp.getSteer() + 75) / 71.0) * M_PI / 180) * timeGPSelapsed;
+
     Z_ << gpsData(GPSIDX::X)
         , gpsData(GPSIDX::Y)
         , heading
@@ -359,11 +369,11 @@ void Localizer::updateWithGate()
         , erpwzdt
         , gpsData(GPSIDX::V)
         , erp.getVelocity();
+
     std::cout << Z_ << std::endl;
     wz_dt = 0;
 
     getCovariance(wzdtSample, wzdtCov);
-
 
     std::string postype = bestpos.position_type;
     ROS_INFO("POSTYPE : %s", postype.c_str());
@@ -381,20 +391,21 @@ void Localizer::updateWithGate()
     C(6, KFIDX::VX) = 1.0;
 
     Eigen::MatrixXd R = Eigen::MatrixXd::Zero(dim_meas, dim_meas);
-//    R(KFIDX::X, KFIDX::Y) = gpsCov(GPSIDX::X, GPSIDX::Y);
-//    R(KFIDX::Y, KFIDX::X) = gpsCov(GPSIDX::Y, GPSIDX::X);
     R(KFIDX::X, KFIDX::X) = gpsCov(GPSIDX::X, GPSIDX::X);
     R(KFIDX::Y, KFIDX::Y) = gpsCov(GPSIDX::Y, GPSIDX::Y);
     R(2, 2) = wzdtCov(0,0) * 50;  // imu heading
     R(3, 3) = wzdtCov(0,0) * 50;  // wz*dt imu
-//    R(4, 4) = 0.0005;   // wz*dt erp
     R(4, 4) = erp.getSteerCovariance();
     R(5, 5) = gpsCov(GPSIDX::V, GPSIDX::V);   // vel gps
     R(6, 6) = 0.005;   // vel erp
 
     if (!bIMUavailable)
     {
-        ROS_ERROR("IMU FALSE");
+        ROS_ERROR("IMU DISABLE");
+    }
+    else
+    {
+        ROS_INFO("IMU ENABLE");
     }
 
     ROS_INFO("R X :\t%f", R(0,0));
@@ -433,24 +444,6 @@ void Localizer::updateWithGate()
         }
     }
 
-//    Eigen::MatrixXd mahalanobis = (Z_ - X_next).transpose() * P_next.inverse() * (Z_ - X_next);
-//    const double distance = mahalanobis(0);
-//    const double gate = 0.05;
-
-//    if(distance < gate)
-//    {
-//        ROS_INFO("distance : %f", distance);
-//    }
-//    else
-//    {
-//        ROS_WARN("distance : %f", distance);
-//    }
-
-    const int dim_update = 4;
-    Eigen::MatrixXd Z_update = Z_.block(0,0,dim_update,1);
-    Eigen::MatrixXd C_update = C.block(0,0,dim_update,dim_kf);
-    Eigen::MatrixXd R_update = R.block(0,0,dim_update,dim_update);
-
     if (kf_.update(Z_, C, R))
     {
         ROS_INFO("UPDATE ESTIMATION DONE");
@@ -483,7 +476,6 @@ void Localizer::visualizerCallback()
     marker.header.stamp = ros::Time::now();
     marker.ns = "baisic_shapes";
     marker.id = markerId++;
-//    if (markerId >= 100) markerId = 0;
     marker.type = visualization_msgs::Marker::ARROW;
     marker.action = visualization_msgs::Marker::ADD;
     marker.pose.position.x = gpsData(KFIDX::X) - utmoffsetX;
@@ -501,13 +493,11 @@ void Localizer::visualizerCallback()
     marker.color.a = 1.0;
     pubMarker.publish(marker);
 
-
     marker_filtered.header.frame_id = "map";
     marker_filtered.header.stamp = ros::Time::now();
     marker_filtered.ns = "baisic_shapes";
     marker_filtered.id = markerId_filtered++;
-    marker_filtered.type =
- visualization_msgs::Marker::ARROW;
+    marker_filtered.type = visualization_msgs::Marker::ARROW;
     marker_filtered.action = visualization_msgs::Marker::ADD;
     marker_filtered.pose.position.x = result(KFIDX::X) - utmoffsetX;
     marker_filtered.pose.position.y = result(KFIDX::Y) - utmoffsetY;
