@@ -9,7 +9,7 @@
 
   <node pkg="localizer" name="localizer" type="localizer" output="screen">
         <!--common parameter-->
-        <param name="calibration_frame_count"   value="10"  type="int"/>  <!-- during 40 * 0.05 second -->
+        <param name="calibration_frame_count"   value="50"  type="int"/>  <!-- during 40 * 0.05 second -->
         
         <!-- imu -->
         <param name="imu_subscribe_topic_name"    value="/ebimu_"  type="string"/>

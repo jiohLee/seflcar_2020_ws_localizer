@@ -212,13 +212,15 @@ void Localizer::filter()
             frameCount++;
             qYawBias.setRPY(0,0, headings / frameCount);
             qYawBias.normalize();
-            localHeading = 0;
+
             if (frameCount >= calibrationFrameCount)
             {
                 bCalibrationDone = true;
                 frameCount = 0;
                 headings = 0;
+                localHeading = 0;
                 ROS_WARN("GPS/IMU Calibration DONE");
+                return;
             }
         }
 
@@ -360,12 +362,13 @@ void Localizer::update()
 
     double heading = normalize(localHeading + tf2::getYaw(qYawBias));
     double erpwzdt = erp.getVelocity() / 1.04 * std::tan(toRadian(((-1 * erp.getSteer() + 75) / 71.0))) * timeGPSelapsed;
+    double gpsheading = gpsData(KFIDX::YAW);
 
     // yaw error
     double yawError = heading - X_next(KFIDX::YAW);
     yawError = toDegree(std::abs(yawError));
 
-    if(yawError > 350)
+    if(yawError > 300)
     {
         ROS_ERROR("YAW ERROR : %f, heading : %f, next : %f", yawError , toDegree(heading), toDegree(X_next(KFIDX::YAW)));
         // normalize again
@@ -377,27 +380,43 @@ void Localizer::update()
         ROS_INFO("YAW ERROR : %f", toDegree(yawError));
     }
 
+    double gpsyawError = gpsheading - X_next(KFIDX::YAW);
+    gpsyawError = toDegree(std::abs(gpsyawError));
+
+    if(gpsyawError > 300)
+    {
+        ROS_ERROR("GPSYAW ERROR : %f, gpsheading : %f, next : %f", gpsyawError , toDegree(gpsheading), toDegree(X_next(KFIDX::YAW)));
+        // normalize again
+        if (gpsheading < 0) gpsheading += 2*M_PI;
+        else if (gpsheading > 0) gpsheading -= 2*M_PI;
+    }
+    else
+    {
+        ROS_INFO("gpsYAW ERROR : %f", toDegree(gpsyawError));
+    }
+
     if (wz_dt == 0) wz_dt = X_next(KFIDX::DYAW);
 
     Z_ << gpsData(GPSIDX::X)
         , gpsData(GPSIDX::Y)
-        , gpsData(GPSIDX::YAW)
+        , gpsheading
         , heading
         , wz_dt
         , erpwzdt
         , gpsData(GPSIDX::V)
         , erp.getVelocity();
 
-    std::cout << "Z : "
+    std::cout << "Z : \t"
               << Z_(0) << " "
-              << Z_(1) << " "
+              << Z_(1) << "\n\t"
               << toDegree(Z_(2)) << " "
-              << toDegree(Z_(3)) << " "
+              << toDegree(Z_(3)) << "\n\t"
               << toDegree(Z_(4)) << " "
-              << toDegree(Z_(5)) << " "
+              << toDegree(Z_(5)) << "\n\t"
               << Z_(6) << " "
               << Z_(7) << " "
-              << "\n\n";
+              << "\n";
+    std::cout << "\t" << toDegree(tf2::getYaw(qYawBias)) << " " << toDegree(localHeading) << std::endl;
 
     wz_dt = 0;
 
@@ -427,7 +446,7 @@ void Localizer::update()
     R(KFIDX::YAW, KFIDX::YAW) = gpsCov(GPSIDX::YAW, GPSIDX::YAW);
     R(3, 3) = wzdtCov(0, 0) * 50;  // imu heading
     R(4, 4) = wzdtCov(0, 0) * 50;  // wz*dt imu
-    R(5, 5) = 0.0005;
+    R(5, 5) = 0.005;
     R(6, 6) = gpsCov(GPSIDX::V, GPSIDX::V);   // vel gps
     R(7, 7) = 0.005;   // vel erp
 
@@ -482,6 +501,7 @@ void Localizer::update()
     }
 
     // update kalman filter
+
     if (kf_.update(Z_, C, R))
     {
         ROS_INFO("UPDATE ESTIMATION DONE");
