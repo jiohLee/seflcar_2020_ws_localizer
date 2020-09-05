@@ -1,0 +1,4 @@
+#ifndef TRIGONOMETRIC_H
+#define TRIGONOMETRIC_H
+
+#endif // TRIGONOMETRIC_H

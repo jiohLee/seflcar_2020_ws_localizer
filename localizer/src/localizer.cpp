@@ -1,5 +1,7 @@
 #include "localizer/localizer.h"
 
+#include "selfcar_lib/trigonometric.h"
+
 const double Localizer::imuUpdateRate = 0.016; // second
 const double Localizer::gpsUpdateRate = 0.05; // second
 
@@ -77,6 +79,7 @@ Localizer::Localizer()
     seq = 0;
 
     std::cout.precision(15);
+
 }
 
 void Localizer::imuCallback(const sensor_msgs::Imu::ConstPtr &msg)
@@ -87,11 +90,9 @@ void Localizer::imuCallback(const sensor_msgs::Imu::ConstPtr &msg)
 
     imu = *msg;
 
-    localHeading = localHeading + imu.angular_velocity.z * dt;
-    localHeading = std::atan2(sin(localHeading), cos(localHeading));
+    localHeading = normalize(localHeading + imu.angular_velocity.z * dt);
+    wz_dt = normalize(wz_dt + imu.angular_velocity.z * dt);
 
-    wz_dt = wz_dt + imu.angular_velocity.z * dt;
-    wz_dt = std::atan2(sin(wz_dt), cos(wz_dt));
     Eigen::MatrixXd data = Eigen::MatrixXd::Zero(1, 1);
     data << wz_dt;
     updateSample(wzdtSample,data);
@@ -166,6 +167,7 @@ void Localizer::filter()
     ros::Time time_current = ros::Time::now();
     timeGPSelapsed = time_current.toSec() - timeGPSprev.toSec();
     ROS_INFO("TIME ELAPSED : %f", timeGPSelapsed);
+
     if (isGPSavailable)
     {
         ROS_INFO("GET GPS DATA, SEQ : %lu", seq++);
@@ -206,7 +208,7 @@ void Localizer::filter()
         if (!fStop && !bCalibrationDone)
         {
             ROS_WARN("GPS/IMU Calibration");
-            headings += gpsData(2);
+            headings += gpsData(GPSIDX::YAW);
             frameCount++;
             qYawBias.setRPY(0,0, headings / frameCount);
             qYawBias.normalize();
@@ -220,10 +222,9 @@ void Localizer::filter()
             }
         }
 
-        // predict
+        // predict && update
         predict();
-        // update
-        updateWithGate();
+        update();
 
         Eigen::MatrixXd result;
         Eigen::MatrixXd P_result;
@@ -234,8 +235,8 @@ void Localizer::filter()
         std::cout << "X(+) : "
                   << result(KFIDX::X) << " "
                   << result(KFIDX::Y) << " "
-                  << result(KFIDX::YAW) * 180 / M_PI << " "
-                  << result(KFIDX::DYAW) * 180 / M_PI << " "
+                  << toDegree(result(KFIDX::YAW)) << " "
+                  << toDegree(result(KFIDX::DYAW)) << " "
                   << result(KFIDX::VX) << " "
                   << "\n\n";
 
@@ -284,21 +285,16 @@ void Localizer::predict()
     const double vx = X_curr(KFIDX::VX);
     const double dt = timeGPSelapsed;
 
-//    if (!bIMUavailable)
-//    {
-//        localHeading += yaw_dt;
-//        ROS_ERROR("HIHIHI");
-//    }
-
-    double heading = std::atan2(std::sin(localHeading + tf2::getYaw(qYawBias)), std::cos(localHeading + tf2::getYaw(qYawBias)));
-
+    // motion model
     X_next(KFIDX::X) = X_curr(KFIDX::X) + vx * cos(yaw) * dt;  // dx = v * cos(yaw)
     X_next(KFIDX::Y) = X_curr(KFIDX::Y) + vx * sin(yaw) * dt;  // dy = v * sin(yaw)
-//    X_next(KFIDX::YAW) = heading;
     X_next(KFIDX::YAW) = X_curr(KFIDX::YAW) + yaw_dt;
     X_next(KFIDX::DYAW) = yaw_dt;
     X_next(KFIDX::VX) = vx;
 
+    X_next(KFIDX::YAW) = normalize(X_next(KFIDX::YAW));
+
+    // jacobian of motion model
     Eigen::MatrixXd A = Eigen::MatrixXd::Identity(dim_kf,dim_kf);
     A(KFIDX::X, KFIDX::YAW) = -1 * vx * dt * std::sin(yaw);
     A(KFIDX::X, KFIDX::VX) = dt * std::cos(yaw);
@@ -306,6 +302,7 @@ void Localizer::predict()
     A(KFIDX::Y, KFIDX::VX) = dt * std::sin(yaw);
     A(KFIDX::YAW, KFIDX::DYAW) = 1;
 
+    // process noise
     Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(dim_kf,dim_kf);
 
     const double dvx = std::sqrt(P_curr(KFIDX::VX, KFIDX::VX));
@@ -334,7 +331,7 @@ void Localizer::predict()
       Q(KFIDX::Y, KFIDX::Y) = 0.05;
     }
 
-    Q(KFIDX::YAW, KFIDX::YAW) = 0.05;         // for yaw
+    Q(KFIDX::YAW, KFIDX::YAW) = 0.0005;         // for yaw
     Q(KFIDX::DYAW, KFIDX::DYAW) = 0.1;         // for dyaw
     Q(KFIDX::VX, KFIDX::VX) = 0.1;            // for v
 
@@ -348,8 +345,9 @@ void Localizer::predict()
     }
 }
 
-void Localizer::updateWithGate()
+void Localizer::update()
 {
+
     Eigen::MatrixXd X_next = Eigen::MatrixXd::Zero(dim_kf,1);
     Eigen::MatrixXd P_next = Eigen::MatrixXd::Zero(dim_kf,dim_kf);
 
@@ -357,20 +355,50 @@ void Localizer::updateWithGate()
     kf_.getP(P_next);
 
     // measurement
-    int dim_meas = 7;
+    int dim_meas = 8;
     Eigen::MatrixXd Z_ = Eigen::MatrixXd::Zero(dim_meas, 1);
-    double heading = std::atan2(std::sin(localHeading + tf2::getYaw(qYawBias)), std::cos(localHeading + tf2::getYaw(qYawBias)));
-    double erpwzdt = erp.getVelocity() / 1.04 * std::tan(((-1 * erp.getSteer() + 75) / 71.0) * M_PI / 180) * timeGPSelapsed;
+
+    double heading = normalize(localHeading + tf2::getYaw(qYawBias));
+    double erpwzdt = erp.getVelocity() / 1.04 * std::tan(toRadian(((-1 * erp.getSteer() + 75) / 71.0))) * timeGPSelapsed;
+
+    // yaw error
+    double yawError = heading - X_next(KFIDX::YAW);
+    yawError = toDegree(std::abs(yawError));
+
+    if(yawError > 350)
+    {
+        ROS_ERROR("YAW ERROR : %f, heading : %f, next : %f", yawError , toDegree(heading), toDegree(X_next(KFIDX::YAW)));
+        // normalize again
+        if (heading < 0) heading += 2*M_PI;
+        else if (heading > 0) heading -= 2*M_PI;
+    }
+    else
+    {
+        ROS_INFO("YAW ERROR : %f", toDegree(yawError));
+    }
+
+    if (wz_dt == 0) wz_dt = X_next(KFIDX::DYAW);
 
     Z_ << gpsData(GPSIDX::X)
         , gpsData(GPSIDX::Y)
+        , gpsData(GPSIDX::YAW)
         , heading
         , wz_dt
         , erpwzdt
         , gpsData(GPSIDX::V)
         , erp.getVelocity();
 
-    std::cout << Z_ << std::endl;
+    std::cout << "Z : "
+              << Z_(0) << " "
+              << Z_(1) << " "
+              << toDegree(Z_(2)) << " "
+              << toDegree(Z_(3)) << " "
+              << toDegree(Z_(4)) << " "
+              << toDegree(Z_(5)) << " "
+              << Z_(6) << " "
+              << Z_(7) << " "
+              << "\n\n";
+
     wz_dt = 0;
 
     getCovariance(wzdtSample, wzdtCov);
@@ -381,48 +409,57 @@ void Localizer::updateWithGate()
     ROS_INFO("ERPSTEERCOV : %f", erp.getSteerCovariance());
     ROS_INFO("ERPVELCOV : %f", erp.getVelocityCovariance());
 
+    // measurement model
     Eigen::MatrixXd C = Eigen::MatrixXd::Zero(dim_meas, dim_kf);
     C(KFIDX::X, KFIDX::X) = 1.0;
     C(KFIDX::Y, KFIDX::Y) = 1.0;
     C(2, KFIDX::YAW) = 1.0;
-    C(3, KFIDX::DYAW) = 1.0;
+    C(3, KFIDX::YAW) = 1.0;
     C(4, KFIDX::DYAW) = 1.0;
-    C(5, KFIDX::VX) = 1.0;
+    C(5, KFIDX::DYAW) = 1.0;
     C(6, KFIDX::VX) = 1.0;
+    C(7, KFIDX::VX) = 1.0;
 
+    // measurement noise
     Eigen::MatrixXd R = Eigen::MatrixXd::Zero(dim_meas, dim_meas);
     R(KFIDX::X, KFIDX::X) = gpsCov(GPSIDX::X, GPSIDX::X);
     R(KFIDX::Y, KFIDX::Y) = gpsCov(GPSIDX::Y, GPSIDX::Y);
-    R(2, 2) = wzdtCov(0,0) * 50;  // imu heading
-    R(3, 3) = wzdtCov(0,0) * 50;  // wz*dt imu
-    R(4, 4) = erp.getSteerCovariance();
-    R(5, 5) = gpsCov(GPSIDX::V, GPSIDX::V);   // vel gps
-    R(6, 6) = 0.005;   // vel erp
+    R(KFIDX::YAW, KFIDX::YAW) = gpsCov(GPSIDX::YAW, GPSIDX::YAW);
+    R(3, 3) = wzdtCov(0, 0) * 50;  // imu heading
+    R(4, 4) = wzdtCov(0, 0) * 50;  // wz*dt imu
+    R(5, 5) = 0.0005;
+    R(6, 6) = gpsCov(GPSIDX::V, GPSIDX::V);   // vel gps
+    R(7, 7) = 0.005;   // vel erp
 
+    // imu fail
     if (!bIMUavailable)
     {
         ROS_ERROR("IMU DISABLE");
+        R(3, 3) = 10000;
+        R(4, 4) = 10000;
     }
     else
     {
         ROS_INFO("IMU ENABLE");
     }
 
-    ROS_INFO("R X :\t%f", R(0,0));
-    ROS_INFO("R Y :\t%f", R(1,1));
-    ROS_INFO("R YAWIMU :\t%f", R(2,2));
-    ROS_INFO("R WZDTIMU :\t%f", R(3,3));
-    ROS_INFO("R WZDTERP :\t%f", R(4,4));
-    ROS_INFO("R VELGPS :\t%f", R(5,5));
-    ROS_INFO("R VELERP :\t%f", R(6,6));
+    ROS_INFO("R \tX :\t%f", R(0,0));
+    ROS_INFO("R \tY :\t%f", R(1,1));
+    ROS_INFO("R YAWGPS :\t%f", R(2, 2));
+    ROS_INFO("R YAWIMU :\t%f", R(3, 3));
+    ROS_INFO("R WZDTIMU :\t%f", R(4, 4));
+    ROS_INFO("R WZDTERP :\t%f", R(5, 5));
+    ROS_INFO("R VELGPS :\t%f", R(6, 6));
+    ROS_INFO("R VELERP :\t%f", R(7, 7));
 
+    // fix yaw bias
     double yawVariance = gpsCov(GPSIDX::YAW, GPSIDX::YAW); // to degree
     double gate_yaw = 0.025;
     if (bCalibrationDone)
     {
         if (yawVariance < gate_yaw * gate_yaw) // gps yaw estimation stable
         {
-            ROS_INFO("GOOD GPS YAW : %f, var : %f",gpsData(GPSIDX::YAW) * 180 / M_PI, yawVariance);
+            ROS_INFO("GOOD GPS YAW : %f, var : %f",toDegree(gpsData(GPSIDX::YAW)), yawVariance);
             headings += gpsData(GPSIDX::YAW);
             frameCount++;
             const int recal = 5;
@@ -440,10 +477,11 @@ void Localizer::updateWithGate()
         {
             headings = 0;
             frameCount = 0;
-            ROS_WARN("SUCK GPS YAW : %f, var : %f",gpsData(GPSIDX::YAW) * 180 / M_PI, yawVariance);
+            ROS_WARN("SUCK GPS YAW : %f, var : %f",toDegree(gpsData(GPSIDX::YAW)), yawVariance);
         }
     }
 
+    // update kalman filter
     if (kf_.update(Z_, C, R))
     {
         ROS_INFO("UPDATE ESTIMATION DONE");
@@ -458,11 +496,6 @@ void Localizer::visualizerCallback()
 {
     Eigen::MatrixXd result(dim_kf,1);
     kf_.getX(result);
-
-    tf2::Quaternion q_local, q_new;
-    q_local.setRPY(0,0,localHeading);
-    q_new = q_local * qYawBias;
-    q_new.normalize();
 
     tf2::Quaternion q_filtered;
     q_filtered.setRPY(0,0,result(KFIDX::YAW));

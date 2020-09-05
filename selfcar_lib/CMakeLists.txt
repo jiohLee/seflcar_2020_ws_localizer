@@ -132,13 +132,12 @@ include_directories(
    include/selfcar_lib/serial_connect.h
    include/selfcar_lib/kalman_filter.h
    include/selfcar_lib/erp42.h
+   include/selfcar_lib/trigonometric.h
 
-   src/transform.cpp
    src/erp42.cpp
-   src/covariance.cpp
-   src/serial_connect.cpp
    src/kalman_filter.cpp
  )
+
  target_link_libraries(selfcar_lib
    ${catkin_LIBRARIES}
  )

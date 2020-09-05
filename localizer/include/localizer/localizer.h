@@ -17,7 +17,7 @@
 
 #include <string>
 #include <vector>
-#include <math.h>
+#include <cmath>
 #include <iomanip>
 
 #include "selfcar_lib//erp42.h"
@@ -42,7 +42,7 @@ private:
     void bestposCallback(const novatel_gps_msgs::NovatelPosition::ConstPtr& msg);
     void filter();
     void predict();
-    void updateWithGate();
+    void update();
 
     // ros
     ros::NodeHandle nh_;
@@ -69,7 +69,6 @@ private:
     double headings;
     ros::Time timeIMUprev;
     double timeIMUelapsed;
-    int index = 0;
     tf2::Quaternion qYawBias;
 
     // imu - param
