@@ -74,6 +74,7 @@ Localizer::Localizer()
     // kalman filter
     X_prev = Eigen::MatrixXd::Zero(dim_kf, 1);
     bKalmanInit = true;
+    stable = ros::Time::now();
 
     //other
     seq = 0;
@@ -294,6 +295,13 @@ void Localizer::predict()
     X_next(KFIDX::DYAW) = yaw_dt;
     X_next(KFIDX::VX) = vx;
 
+    if(erp.getState() == "STOP" && bCalibrationDone)
+    {
+        X_next(KFIDX::YAW) = X_curr(KFIDX::YAW);
+        X_next(KFIDX::DYAW) = 0;
+        X_next(KFIDX::VX) = 0;
+    }
+
     X_next(KFIDX::YAW) = normalize(X_next(KFIDX::YAW));
 
     // jacobian of motion model
@@ -406,6 +414,14 @@ void Localizer::update()
         , gpsData(GPSIDX::V)
         , erp.getVelocity();
 
+    if (erp.getState() == "STOP" && bCalibrationDone)
+    {
+        Z_(4) = 0;
+        Z_(5) = 0;
+        Z_(6) = 0;
+        Z_(7) = 0;
+    }
+
     std::cout << "Z : \t"
               << Z_(0) << " "
               << Z_(1) << "\n\t"
@@ -441,8 +457,10 @@ void Localizer::update()
 
     // measurement noise
     Eigen::MatrixXd R = Eigen::MatrixXd::Zero(dim_meas, dim_meas);
-    R(KFIDX::X, KFIDX::X) = gpsCov(GPSIDX::X, GPSIDX::X);
-    R(KFIDX::Y, KFIDX::Y) = gpsCov(GPSIDX::Y, GPSIDX::Y);
+//    R(KFIDX::X, KFIDX::X) = gpsCov(GPSIDX::X, GPSIDX::X);
+//    R(KFIDX::Y, KFIDX::Y) = gpsCov(GPSIDX::Y, GPSIDX::Y);
+    R(KFIDX::X, KFIDX::X) = gps.position_covariance[0];
+    R(KFIDX::Y, KFIDX::Y) = gps.position_covariance[4];
     R(KFIDX::YAW, KFIDX::YAW) = gpsCov(GPSIDX::YAW, GPSIDX::YAW);
     R(3, 3) = wzdtCov(0, 0) * 50;  // imu heading
     R(4, 4) = wzdtCov(0, 0) * 50;  // wz*dt imu
@@ -500,8 +518,57 @@ void Localizer::update()
         }
     }
 
-    // update kalman filter
+    // update kalman filter    
 
+    if (erp.getState() == "STOP" && bCalibrationDone)
+    {
+        // gps has big variance when stop
+        stable = ros::Time::now();
+        R(KFIDX::X, KFIDX::X) = 10000;
+        R(KFIDX::Y, KFIDX::Y) = 10000;
+    }
+    else
+    {
+        double tmp_time = ros::Time::now().toSec() - stable.toSec();
+        if (tmp_time < 1)
+        {
+            // gps has big variance when depart
+            R(KFIDX::X, KFIDX::X) = 1000;
+            R(KFIDX::Y, KFIDX::Y) = 1000;
+            marker_filtered.color.r = 0.0f;
+            marker_filtered.color.g = 0.0f;
+            marker_filtered.color.b = 1.0f;
+            marker_filtered.color.a = 1.0;
+        }
+        else if(tmp_time < 2)
+        {
+            // gps has big variance when depart
+            R(KFIDX::X, KFIDX::X) = 100;
+            R(KFIDX::Y, KFIDX::Y) = 100;
+            marker_filtered.color.r = 0.0f;
+            marker_filtered.color.g = 1.0f;
+            marker_filtered.color.b = 1.0f;
+            marker_filtered.color.a = 1.0;
+        }
+        else if(tmp_time < 3)
+        {
+            // gps has big variance when depart
+            R(KFIDX::X, KFIDX::X) = 10;
+            R(KFIDX::Y, KFIDX::Y) = 10;
+            marker_filtered.color.r = 1.0f;
+            marker_filtered.color.g = 0.0f;
+            marker_filtered.color.b = 1.0f;
+            marker_filtered.color.a = 1.0;
+        }
+        else
+        {
+            marker_filtered.color.r = 1.0f;
+            marker_filtered.color.g = 0.0f;
+            marker_filtered.color.b = 0.0f;
+            marker_filtered.color.a = 1.0;
+
+        }
+    }
     if (kf_.update(Z_, C, R))
     {
         ROS_INFO("UPDATE ESTIMATION DONE");
@@ -561,10 +628,7 @@ void Localizer::visualizerCallback()
     marker_filtered.scale.z = 0.1;
 
     // Set the color -- be sure to set alpha to something non-zero!
-    marker_filtered.color.r = 1.0f;
-    marker_filtered.color.g = 0.0f;
-    marker_filtered.color.b = 0.0f;
-    marker_filtered.color.a = 1.0;
+
     pubMarker_filtered.publish(marker_filtered);
 
     static tf2_ros::TransformBroadcaster br;

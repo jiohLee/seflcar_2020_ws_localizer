@@ -134,6 +134,7 @@ private:
     };
     typedef KF::IDX KFIDX;
     bool bKalmanInit;
+    ros::Time stable;
 
     // visualizer
     void visualizerCallback();
