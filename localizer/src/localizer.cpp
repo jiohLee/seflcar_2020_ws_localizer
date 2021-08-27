@@ -79,9 +79,6 @@ Localizer::Localizer()
     bKalmanInit = false;
     stable = ros::Time::now();
 
-    //other
-    seq = 0;
-
     std::cout.precision(15);
 
 }
@@ -149,6 +146,17 @@ void Localizer::gpsCallback(const sensor_msgs::NavSatFix::ConstPtr &msg)
         filter();
     }
     //    visualizerCallback();
+
+    if(erp.isERPavailable())
+    {
+        ROS_INFO("ERP MODE : %s", erp.getAorM().c_str());
+        ROS_INFO("ERP ESTOP : %s", erp.getEstop().c_str());
+        ROS_INFO("ERP GEAR : %s", erp.getGear().c_str());
+        ROS_INFO("ERP ENC : %d", erp.getEncoder());
+        ROS_INFO("ERP STATE : %s", erp.getState().c_str());
+        ROS_INFO("ERP STEER : %d", erp.getSteer());
+        ROS_INFO("ERP VEL(m/s) : %f\n", erp.getVelocity());
+    }
 
     tf2::Quaternion q_gps;
     q_gps.setRPY(0,0,gpsData(KFIDX::YAW));
@@ -223,10 +231,10 @@ void Localizer::initialposeCallback(const geometry_msgs::PoseWithCovarianceStamp
     X_curr(KFIDX::Y) = msg->pose.pose.position.y + utmoffsetY;;
     X_curr(KFIDX::YAW) = yaw;
     X_curr(KFIDX::VX) = 0;
-    P_curr(KFIDX::X, KFIDX::X) = 10.0;
-    P_curr(KFIDX::Y, KFIDX::Y) = 10.0;
-    P_curr(KFIDX::YAW, KFIDX::YAW) = 10.0;
-    P_curr(KFIDX::VX, KFIDX::VX) = 10.0;
+    P_curr(KFIDX::X, KFIDX::X) = 1.0;
+    P_curr(KFIDX::Y, KFIDX::Y) = 1.0;
+    P_curr(KFIDX::YAW, KFIDX::YAW) = 0.0;
+    P_curr(KFIDX::VX, KFIDX::VX) = 0.0;
     kf_.init(X_curr, P_curr);
     bKalmanInit = true;
 
@@ -242,21 +250,6 @@ void Localizer::filter()
     timeGPSelapsed = time_current.toSec() - timeGPSprev.toSec();
     ROS_INFO("TIME ELAPSED : %f", timeGPSelapsed);
 
-    ROS_INFO("GET GPS DATA, SEQ : %lu", seq++);
-
-    bool fStop = isGPSstop;
-    if(erp.isERPavailable())
-    {
-        fStop = erp.isStop();
-        ROS_INFO("ERP MODE : %s", erp.getAorM().c_str());
-        ROS_INFO("ERP ESTOP : %s", erp.getEstop().c_str());
-        ROS_INFO("ERP GEAR : %s", erp.getGear().c_str());
-        ROS_INFO("ERP ENC : %d", erp.getEncoder());
-        ROS_INFO("ERP STATE : %s", erp.getState().c_str());
-        ROS_INFO("ERP STEER : %d", erp.getSteer());
-        ROS_INFO("ERP VEL(m/s) : %f", erp.getVelocity());
-    }
-
     // predict && update
     predict();
     update();
@@ -266,14 +259,6 @@ void Localizer::filter()
 
     kf_.getX(result);
     kf_.getP(P_result);
-
-    std::cout << "X(+) : "
-              << result(KFIDX::X) << " "
-              << result(KFIDX::Y) << " "
-              << toDegree(result(KFIDX::YAW)) << " "
-              << toDegree(result(KFIDX::DYAW)) << " "
-              << result(KFIDX::VX) << " "
-              << "\n\n";
 
     tf2::Quaternion q_filtered;
     q_filtered.setRPY(0,0,result(KFIDX::YAW));
