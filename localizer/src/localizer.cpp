@@ -14,6 +14,7 @@ Localizer::Localizer()
     std::string gps_subscribe_topic_name;
     std::string gps_bestvel_subscribe_topic_name;
     std::string gps_bestpos_subscribe_topic_name;
+    std::string initialpose_topic_name;
     bool gps_velocity_estimate;
 
     // param - imu
@@ -25,6 +26,7 @@ Localizer::Localizer()
     pnh_.param<std::string>("gps_subscribe_topic_name",gps_subscribe_topic_name,"/novatel_fix");
     pnh_.param<std::string>("gps_bestvel_subscribe_topic_name",gps_bestvel_subscribe_topic_name,"/bestvel");
     pnh_.param<std::string>("gps_bestpos_subscribe_topic_name",gps_bestpos_subscribe_topic_name,"/bestpos");
+    pnh_.param<std::string>("initialpose_topic_name",initialpose_topic_name,"/initialpose");
     pnh_.param<int>("covariance_sample_num", sampleNum, 3);
     pnh_.param<bool>("gps_velocity_estimate",gps_velocity_estimate,true);
 
@@ -37,6 +39,7 @@ Localizer::Localizer()
     subGPS = nh_.subscribe(gps_subscribe_topic_name,1,&Localizer::gpsCallback,this);
     subBestVel = nh_.subscribe(gps_bestvel_subscribe_topic_name,1,&Localizer::bestvelCallback,this);
     subBestPos = nh_.subscribe(gps_bestpos_subscribe_topic_name,1,&Localizer::bestposCallback,this);
+    subInitialpose = nh_.subscribe(initialpose_topic_name,1,&Localizer::initialposeCallback,this);
 
     // ros - publisher
     pubPose = nh_.advertise<geometry_msgs::PoseWithCovariance>("Perception/Localization/LocalPose",1);
@@ -73,7 +76,7 @@ Localizer::Localizer()
 
     // kalman filter
     X_prev = Eigen::MatrixXd::Zero(dim_kf, 1);
-    bKalmanInit = true;
+    bKalmanInit = false;
     stable = ros::Time::now();
 
     //other
@@ -140,12 +143,49 @@ void Localizer::gpsCallback(const sensor_msgs::NavSatFix::ConstPtr &msg)
 
     Eigen::MatrixXd data = gpsData.transpose();
     getCovariance(gpsSample, data, gpsCov);
-    isGPSavailable = true;
 
-    filter();
-    visualizerCallback();
+    if(bKalmanInit)
+    {
+        filter();
+    }
+    //    visualizerCallback();
 
-    isGPSavailable = false;
+    tf2::Quaternion q_gps;
+    q_gps.setRPY(0,0,gpsData(KFIDX::YAW));
+
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = ros::Time::now();
+    marker.ns = "baisic_shapes";
+    marker.id = markerId++;
+    marker.type = visualization_msgs::Marker::ARROW;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose.position.x = gpsData(KFIDX::X) - utmoffsetX;
+    marker.pose.position.y = gpsData(KFIDX::Y) - utmoffsetY;
+    marker.pose.position.z = 0;
+    marker.pose.orientation = tf2::toMsg(q_gps);
+    marker.scale.x = 0.2;
+    marker.scale.y = 0.1;
+    marker.scale.z = 0.1;
+
+    // Set the color -- be sure to set alpha to something non-zero!
+    marker.color.r = 0.0f;
+    marker.color.g = 1.0f;
+    marker.color.b = 0.0f;
+    marker.color.a = 1.0;
+    pubMarker.publish(marker);
+
+    static tf2_ros::TransformBroadcaster br;
+    geometry_msgs::TransformStamped tStamp;
+    tStamp.header.stamp = ros::Time::now();
+    tStamp.header.frame_id = "map";
+    tStamp.child_frame_id = "gps_raw";
+    tStamp.transform.translation.x = gpsData(KFIDX::X) - utmoffsetX;
+    tStamp.transform.translation.y = gpsData(KFIDX::Y) - utmoffsetY;
+    tStamp.transform.translation.z = 0;
+    tStamp.transform.rotation = tf2::toMsg(q_gps);
+    br.sendTransform(tStamp);
+
     bIMUavailable = false;
 }
 
@@ -162,6 +202,39 @@ void Localizer::bestposCallback(const novatel_gps_msgs::NovatelPosition::ConstPt
     bestpos = *msg;
 }
 
+void Localizer::initialposeCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr &msg)
+{
+    double roll, pitch, yaw;
+
+    tf2::Quaternion q(
+                msg->pose.pose.orientation.x,
+                msg->pose.pose.orientation.y,
+                msg->pose.pose.orientation.z,
+                msg->pose.pose.orientation.w
+                );
+    tf2::Matrix3x3 m(q);
+    m.getRPY(roll, pitch, yaw);
+    std::cout << "RPY : " << roll << ' ' << pitch << ' ' << yaw << '\n';
+
+    Eigen::MatrixXd X_curr = Eigen::MatrixXd::Zero(dim_kf,1);
+    Eigen::MatrixXd P_curr = Eigen::MatrixXd::Zero(dim_kf,dim_kf);
+
+    X_curr(KFIDX::X) = msg->pose.pose.position.x + utmoffsetX;
+    X_curr(KFIDX::Y) = msg->pose.pose.position.y + utmoffsetY;;
+    X_curr(KFIDX::YAW) = yaw;
+    X_curr(KFIDX::VX) = 0;
+    P_curr(KFIDX::X, KFIDX::X) = 10.0;
+    P_curr(KFIDX::Y, KFIDX::Y) = 10.0;
+    P_curr(KFIDX::YAW, KFIDX::YAW) = 10.0;
+    P_curr(KFIDX::VX, KFIDX::VX) = 10.0;
+    kf_.init(X_curr, P_curr);
+    bKalmanInit = true;
+
+    localHeading = yaw;
+
+    ROS_INFO("Kalman Filter Initialized");
+}
+
 void Localizer::filter()
 {
     // rostime display
@@ -169,107 +242,90 @@ void Localizer::filter()
     timeGPSelapsed = time_current.toSec() - timeGPSprev.toSec();
     ROS_INFO("TIME ELAPSED : %f", timeGPSelapsed);
 
-    if (isGPSavailable)
+    ROS_INFO("GET GPS DATA, SEQ : %lu", seq++);
+
+    bool fStop = isGPSstop;
+    if(erp.isERPavailable())
     {
-        ROS_INFO("GET GPS DATA, SEQ : %lu", seq++);
-
-        Eigen::MatrixXd X_curr = Eigen::MatrixXd::Zero(dim_kf,1);
-        Eigen::MatrixXd X_next = Eigen::MatrixXd::Zero(dim_kf,1);
-        Eigen::MatrixXd P_curr = Eigen::MatrixXd::Zero(dim_kf,dim_kf);
-
-        if(bKalmanInit)
-        {
-            X_curr(KFIDX::X) = gpsData(GPSIDX::X);
-            X_curr(KFIDX::Y) = gpsData(GPSIDX::Y);
-            X_curr(KFIDX::YAW) = gpsData(GPSIDX::YAW);
-            X_curr(KFIDX::VX) = gpsData(GPSIDX::V);
-            P_curr(KFIDX::X, KFIDX::X) = gps.position_covariance[0];
-            P_curr(KFIDX::Y, KFIDX::Y) = gps.position_covariance[4];
-            P_curr(KFIDX::YAW, KFIDX::YAW) = gpsCov(GPSIDX::YAW);
-            P_curr(KFIDX::VX, KFIDX::VX) = gpsCov(GPSIDX::V);
-            kf_.init(X_curr, P_curr);
-            bKalmanInit = false;
-            ROS_INFO("Initialized Kalman Filter");
-            return;
-        }
-
-        bool fStop = isGPSstop;
-        if(erp.isERPavailable())
-        {
-            fStop = erp.isStop();
-            ROS_INFO("ERP MODE : %s", erp.getAorM().c_str());
-            ROS_INFO("ERP ESTOP : %s", erp.getEstop().c_str());
-            ROS_INFO("ERP GEAR : %s", erp.getGear().c_str());
-            ROS_INFO("ERP ENC : %d", erp.getEncoder());
-            ROS_INFO("ERP STATE : %s", erp.getState().c_str());
-            ROS_INFO("ERP STEER : %d", erp.getSteer());
-            ROS_INFO("ERP VEL(m/s) : %f", erp.getVelocity());
-        }
-
-        if (!fStop && !bCalibrationDone)
-        {
-            ROS_WARN("GPS/IMU Calibration");
-            headings += gpsData(GPSIDX::YAW);
-            frameCount++;
-            qYawBias.setRPY(0,0, headings / frameCount);
-            qYawBias.normalize();
-
-            if (frameCount >= calibrationFrameCount)
-            {
-                bCalibrationDone = true;
-                frameCount = 0;
-                headings = 0;
-                localHeading = 0;
-                ROS_WARN("GPS/IMU Calibration DONE");
-                return;
-            }
-        }
-
-        // predict && update
-        predict();
-        update();
-
-        Eigen::MatrixXd result;
-        Eigen::MatrixXd P_result;
-
-        kf_.getX(result);
-        kf_.getP(P_result);
-
-        std::cout << "X(+) : "
-                  << result(KFIDX::X) << " "
-                  << result(KFIDX::Y) << " "
-                  << toDegree(result(KFIDX::YAW)) << " "
-                  << toDegree(result(KFIDX::DYAW)) << " "
-                  << result(KFIDX::VX) << " "
-                  << "\n\n";
-
-        tf2::Quaternion q_filtered;
-        q_filtered.setRPY(0,0,result(KFIDX::YAW));
-        q_filtered.normalize();
-
-        tf2::Quaternion q_local, q_new;
-        q_local.setRPY(0,0,localHeading);
-        q_new = q_local * qYawBias;
-        q_new.normalize();
-
-        geometry_msgs::PoseWithCovariance pos;
-        pos.pose.position.x = result(KFIDX::X);
-        pos.pose.position.y = result(KFIDX::Y);
-        pos.pose.position.z = 0;
-        pos.pose.orientation = tf2::toMsg(q_filtered);
-        pos.covariance[6*0 + 0] = gpsCov(GPSIDX::X);
-        pos.covariance[6*1 + 1] = gpsCov(GPSIDX::Y);
-        pos.covariance[6*2 + 2] = 0;
-        pos.covariance[6*3 + 3] = imu.orientation_covariance[0];
-        pos.covariance[6*4 + 4] = imu.orientation_covariance[4];
-        pos.covariance[6*5 + 5] = imu.orientation_covariance[8];
-        pubPose.publish(pos);
+        fStop = erp.isStop();
+        ROS_INFO("ERP MODE : %s", erp.getAorM().c_str());
+        ROS_INFO("ERP ESTOP : %s", erp.getEstop().c_str());
+        ROS_INFO("ERP GEAR : %s", erp.getGear().c_str());
+        ROS_INFO("ERP ENC : %d", erp.getEncoder());
+        ROS_INFO("ERP STATE : %s", erp.getState().c_str());
+        ROS_INFO("ERP STEER : %d", erp.getSteer());
+        ROS_INFO("ERP VEL(m/s) : %f", erp.getVelocity());
     }
-    else
-    {
-        ROS_WARN("NO GPS DATA");
-        return;
-    }
+
+    // predict && update
+    predict();
+    update();
+
+    Eigen::MatrixXd result;
+    Eigen::MatrixXd P_result;
+
+    kf_.getX(result);
+    kf_.getP(P_result);
+
+    std::cout << "X(+) : "
+              << result(KFIDX::X) << " "
+              << result(KFIDX::Y) << " "
+              << toDegree(result(KFIDX::YAW)) << " "
+              << toDegree(result(KFIDX::DYAW)) << " "
+              << result(KFIDX::VX) << " "
+              << "\n\n";
+
+    tf2::Quaternion q_filtered;
+    q_filtered.setRPY(0,0,result(KFIDX::YAW));
+    q_filtered.normalize();
+
+    tf2::Quaternion q_local, q_new;
+    q_local.setRPY(0,0,localHeading);
+    q_new = q_local * qYawBias;
+    q_new.normalize();
+
+    geometry_msgs::PoseWithCovariance pos;
+    pos.pose.position.x = result(KFIDX::X);
+    pos.pose.position.y = result(KFIDX::Y);
+    pos.pose.position.z = 0;
+    pos.pose.orientation = tf2::toMsg(q_filtered);
+    pos.covariance[6*0 + 0] = gpsCov(GPSIDX::X);
+    pos.covariance[6*1 + 1] = gpsCov(GPSIDX::Y);
+    pos.covariance[6*2 + 2] = 0;
+    pos.covariance[6*3 + 3] = imu.orientation_covariance[0];
+    pos.covariance[6*4 + 4] = imu.orientation_covariance[4];
+    pos.covariance[6*5 + 5] = imu.orientation_covariance[8];
+    pubPose.publish(pos);
+
+    marker_filtered.header.frame_id = "map";
+    marker_filtered.header.stamp = ros::Time::now();
+    marker_filtered.ns = "baisic_shapes";
+    marker_filtered.id = markerId_filtered++;
+    marker_filtered.type = visualization_msgs::Marker::ARROW;
+    marker_filtered.action = visualization_msgs::Marker::ADD;
+    marker_filtered.pose.position.x = result(KFIDX::X) - utmoffsetX;
+    marker_filtered.pose.position.y = result(KFIDX::Y) - utmoffsetY;
+    marker_filtered.pose.position.z = 0;
+    marker_filtered.pose.orientation = tf2::toMsg(q_filtered);
+    marker_filtered.scale.x = 0.2;
+    marker_filtered.scale.y = 0.1;
+    marker_filtered.scale.z = 0.1;
+
+    // Set the color -- be sure to set alpha to something non-zero!
+
+    pubMarker_filtered.publish(marker_filtered);
+
+    static tf2_ros::TransformBroadcaster br;
+    geometry_msgs::TransformStamped tStamp;
+    tStamp.header.stamp = ros::Time::now();
+    tStamp.header.frame_id = "map";
+    tStamp.child_frame_id = "gps";
+    tStamp.transform.translation.x = result(KFIDX::X) - utmoffsetX;
+    tStamp.transform.translation.y = result(KFIDX::Y) - utmoffsetY;
+    tStamp.transform.translation.z = 0;
+    tStamp.transform.rotation = tf2::toMsg(q_filtered);
+    br.sendTransform(tStamp);
+
     timeGPSprev = time_current;
 }
 
@@ -320,25 +376,25 @@ void Localizer::predict()
 
     if (dvx < 10.0 && dyaw < 1.0)
     {
-      // auto covariance calculate for x, y assuming vx & yaw estimation covariance is small
+        // auto covariance calculate for x, y assuming vx & yaw estimation covariance is small
 
-      /* Set covariance matrix Q for process noise. Calc Q by velocity and yaw angle covariance :
+        /* Set covariance matrix Q for process noise. Calc Q by velocity and yaw angle covariance :
        dx = Ax + Jp*w -> Q = Jp*w_cov*Jp'          */
-      Eigen::MatrixXd Jp = Eigen::MatrixXd::Zero(2, 2);  // coeff of deviation of vx & yaw
-      Jp << cos(yaw), -vx * sin(yaw), sin(yaw), vx * cos(yaw);
-      Eigen::MatrixXd Q_vx_yaw = Eigen::MatrixXd::Zero(2, 2);  // cov of vx and yaw
+        Eigen::MatrixXd Jp = Eigen::MatrixXd::Zero(2, 2);  // coeff of deviation of vx & yaw
+        Jp << cos(yaw), -vx * sin(yaw), sin(yaw), vx * cos(yaw);
+        Eigen::MatrixXd Q_vx_yaw = Eigen::MatrixXd::Zero(2, 2);  // cov of vx and yaw
 
-      Q_vx_yaw(0, 0) = P_curr(KFIDX::VX, KFIDX::VX) * dt;        // covariance of vx - vx
-      Q_vx_yaw(1, 1) = P_curr(KFIDX::YAW, KFIDX::YAW) * dt;      // covariance of yaw - yaw
-      Q_vx_yaw(0, 1) = P_curr(KFIDX::VX, KFIDX::YAW) * dt;       // covariance of vx - yaw
-      Q_vx_yaw(1, 0) = P_curr(KFIDX::YAW, KFIDX::VX) * dt;       // covariance of yaw - vx
-      Q.block(0, 0, 2, 2) = Jp * Q_vx_yaw * Jp.transpose();  // for pos_x & pos_y
+        Q_vx_yaw(0, 0) = P_curr(KFIDX::VX, KFIDX::VX) * dt;        // covariance of vx - vx
+        Q_vx_yaw(1, 1) = P_curr(KFIDX::YAW, KFIDX::YAW) * dt;      // covariance of yaw - yaw
+        Q_vx_yaw(0, 1) = P_curr(KFIDX::VX, KFIDX::YAW) * dt;       // covariance of vx - yaw
+        Q_vx_yaw(1, 0) = P_curr(KFIDX::YAW, KFIDX::VX) * dt;       // covariance of yaw - vx
+        Q.block(0, 0, 2, 2) = Jp * Q_vx_yaw * Jp.transpose();  // for pos_x & pos_y
     }
     else
     {
-      // vx & vy is not converged yet, set constant value.
-      Q(KFIDX::X, KFIDX::X) = 0.05;
-      Q(KFIDX::Y, KFIDX::Y) = 0.05;
+        // vx & vy is not converged yet, set constant value.
+        Q(KFIDX::X, KFIDX::X) = 0.05;
+        Q(KFIDX::Y, KFIDX::Y) = 0.05;
     }
 
     Q(KFIDX::YAW, KFIDX::YAW) = 0.0005;         // for yaw
@@ -406,13 +462,13 @@ void Localizer::update()
     if (wz_dt == 0) wz_dt = X_next(KFIDX::DYAW);
 
     Z_ << gpsData(GPSIDX::X)
-        , gpsData(GPSIDX::Y)
-        , gpsheading
-        , heading
-        , wz_dt
-        , erpwzdt
-        , gpsData(GPSIDX::V)
-        , erp.getVelocity();
+          , gpsData(GPSIDX::Y)
+            , gpsheading
+            , heading
+            , wz_dt
+            , erpwzdt
+            , gpsData(GPSIDX::V)
+            , erp.getVelocity();
 
     if (erp.getState() == "STOP" && bCalibrationDone)
     {
@@ -457,10 +513,8 @@ void Localizer::update()
 
     // measurement noise
     Eigen::MatrixXd R = Eigen::MatrixXd::Zero(dim_meas, dim_meas);
-//    R(KFIDX::X, KFIDX::X) = gpsCov(GPSIDX::X, GPSIDX::X);
-//    R(KFIDX::Y, KFIDX::Y) = gpsCov(GPSIDX::Y, GPSIDX::Y);
-    R(KFIDX::X, KFIDX::X) = gps.position_covariance[0];
-    R(KFIDX::Y, KFIDX::Y) = gps.position_covariance[4];
+    R(KFIDX::X, KFIDX::X) = gps.position_covariance[0] / 10.0;
+    R(KFIDX::Y, KFIDX::Y) = gps.position_covariance[4] / 10.0;
     R(KFIDX::YAW, KFIDX::YAW) = gpsCov(GPSIDX::YAW, GPSIDX::YAW);
     R(3, 3) = wzdtCov(0, 0) * 50;  // imu heading
     R(4, 4) = wzdtCov(0, 0) * 50;  // wz*dt imu
@@ -492,35 +546,32 @@ void Localizer::update()
     // fix yaw bias
     double yawVariance = gpsCov(GPSIDX::YAW, GPSIDX::YAW); // to degree
     double gate_yaw = 0.025;
-    if (bCalibrationDone)
+    if (yawVariance < gate_yaw * gate_yaw) // gps yaw estimation stable
     {
-        if (yawVariance < gate_yaw * gate_yaw) // gps yaw estimation stable
+        ROS_INFO("GOOD GPS YAW : %f, var : %f",toDegree(gpsData(GPSIDX::YAW)), yawVariance);
+        headings += gpsData(GPSIDX::YAW);
+        frameCount++;
+        const int recal = 5;
+        if(frameCount >= recal && erp.getState() == "FORWARD") // get yaw bias
         {
-            ROS_INFO("GOOD GPS YAW : %f, var : %f",toDegree(gpsData(GPSIDX::YAW)), yawVariance);
-            headings += gpsData(GPSIDX::YAW);
-            frameCount++;
-            const int recal = 5;
-            if(frameCount >= recal && erp.getState() == "FORWARD") // get yaw bias
-            {
-                qYawBias.setRPY(0,0,headings / recal);
-                qYawBias.normalize();
-                headings = 0;
-                frameCount = 0;
-                localHeading = 0;
-                ROS_WARN("GET YAW BIAS");
-            }
-        }
-        else
-        {
+            qYawBias.setRPY(0,0,headings / recal);
+            qYawBias.normalize();
             headings = 0;
             frameCount = 0;
-            ROS_WARN("SUCK GPS YAW : %f, var : %f",toDegree(gpsData(GPSIDX::YAW)), yawVariance);
+            localHeading = 0;
+            ROS_WARN("GET YAW BIAS");
         }
     }
+    else
+    {
+        headings = 0;
+        frameCount = 0;
+        ROS_WARN("SUCK GPS YAW : %f, var : %f",toDegree(gpsData(GPSIDX::YAW)), yawVariance);
+    }
 
-    // update kalman filter    
+    // update kalman filter
 
-    if (erp.getState() == "STOP" && bCalibrationDone)
+    if (erp.getState() == "STOP")
     {
         // gps has big variance when stop
         stable = ros::Time::now();

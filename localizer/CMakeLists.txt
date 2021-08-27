@@ -159,9 +159,6 @@ include_directories(
 add_executable(localizer
     src/localizer_node.cpp
     src/localizer.cpp
-#    src/gnss_localizer.cpp
-#    include/localizer/gnss_localizer.h
-    include/localizer/localizer.h
 )
 target_link_libraries(localizer
   ${catkin_LIBRARIES}

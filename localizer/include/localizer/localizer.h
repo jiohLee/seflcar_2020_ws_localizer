@@ -40,6 +40,7 @@ private:
     void gpsCallback(const sensor_msgs::NavSatFix::ConstPtr& msg);
     void bestvelCallback(const novatel_gps_msgs::NovatelVelocity::ConstPtr& msg);
     void bestposCallback(const novatel_gps_msgs::NovatelPosition::ConstPtr& msg);
+    void initialposeCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg);
     void filter();
     void predict();
     void update();
@@ -52,6 +53,7 @@ private:
     ros::Subscriber subGPS;
     ros::Subscriber subBestVel;
     ros::Subscriber subBestPos;
+    ros::Subscriber subInitialpose;
 
     ros::Publisher pubPose;
     ros::Publisher pubMarker;

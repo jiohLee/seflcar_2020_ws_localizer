@@ -4,8 +4,8 @@
   </node> -->
 
   <!-- k-city -->
-  <!-- <node name="map_server" pkg="map_server" type="map_server" args="$(find localzier)/map/global_map.yaml" >
-  </node> -->
+  <node name="map_server" pkg="map_server" type="map_server" args="$(find localizer)/map/global_map.yaml" >
+  </node>
 
   <node pkg="localizer" name="localizer" type="localizer" output="screen">
         <!--common parameter-->
@@ -19,6 +19,7 @@
         <param name="gps_subscribe_topic_name"      value="/novatel_fix"  type="string"/>
         <param name="gps_bestvel_subscribe_topic_name"  value="/bestvel"  type="string"/>
         <param name="gps_bestpos_subscribe_topic_name"  value="/bestpos"  type="string"/>
+        <param name="initialpose_topoc_name"  value="/initialpose"  type="string"/>
         <param name="covariance_sample_num"         value="25"         type="int"/>
         
         <!-- k-city -->
@@ -34,6 +35,7 @@
         <param name="utmOffset_y"    value="0"  type="double"/> -->
   </node>
 </launch>
+
 <!-- 
 // offset_ochang_map = [4065828.6567154536, 361043.5780744802]
 // offset_kcity_map = [4124215.34631, 302533.174487]
