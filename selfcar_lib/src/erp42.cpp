@@ -26,7 +26,7 @@ ERP42::ERP42(ros::NodeHandle &node, ros::NodeHandle &prv_node)
     breakEnable = false;
     velEnable = false;
     steerEnable = false;
-    encEbable = false;
+    encEnable = false;
     state = IDX::STOP;
 
     steerSample = Eigen::MatrixXd::Zero(10,1);
@@ -132,7 +132,7 @@ const double ERP42::getSteerCovariance()
 
 const int ERP42::getEncoder()
 {
-    if (encEbable) return enc.data;
+    if (encEnable) return enc.data;
     else return 0;
 }
 
@@ -187,10 +187,7 @@ void ERP42::velCallback(const std_msgs::Int16::ConstPtr &msg)
     }
     else
     {
-        if(!encEbable)
-        {
-            state = IDX::GO;
-        }
+        state = IDX::GO;
     }
 
     Eigen::MatrixXd Z_ = Eigen::MatrixXd::Zero(1,1);
@@ -217,7 +214,7 @@ void ERP42::steerCallback(const std_msgs::Int16::ConstPtr &msg)
 
 void ERP42::encCallback(const std_msgs::Int32::ConstPtr &msg)
 {
-    encEbable = true;
+    encEnable = true;
     std_msgs::Int32 tmp = *msg;
     if(tmp.data > 3000)
     {

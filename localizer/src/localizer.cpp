@@ -145,7 +145,6 @@ void Localizer::gpsCallback(const sensor_msgs::NavSatFix::ConstPtr &msg)
     {
         filter();
     }
-    //    visualizerCallback();
 
     if(erp.isERPavailable())
     {
@@ -164,7 +163,7 @@ void Localizer::gpsCallback(const sensor_msgs::NavSatFix::ConstPtr &msg)
     visualization_msgs::Marker marker;
     marker.header.frame_id = "map";
     marker.header.stamp = ros::Time::now();
-    marker.ns = "baisic_shapes";
+    marker.ns = "raw";
     marker.id = markerId++;
     marker.type = visualization_msgs::Marker::ARROW;
     marker.action = visualization_msgs::Marker::ADD;
@@ -175,6 +174,8 @@ void Localizer::gpsCallback(const sensor_msgs::NavSatFix::ConstPtr &msg)
     marker.scale.x = 0.2;
     marker.scale.y = 0.1;
     marker.scale.z = 0.1;
+
+    if(markerId > 200) markerId = 0;
 
     // Set the color -- be sure to set alpha to something non-zero!
     marker.color.r = 0.0f;
@@ -284,8 +285,8 @@ void Localizer::filter()
 
     marker_filtered.header.frame_id = "map";
     marker_filtered.header.stamp = ros::Time::now();
-    marker_filtered.ns = "baisic_shapes";
-    marker_filtered.id = markerId_filtered++;
+    marker_filtered.ns = "filtered";
+    marker_filtered.id = markerId++;
     marker_filtered.type = visualization_msgs::Marker::ARROW;
     marker_filtered.action = visualization_msgs::Marker::ADD;
     marker_filtered.pose.position.x = result(KFIDX::X) - utmoffsetX;
@@ -336,7 +337,7 @@ void Localizer::predict()
     X_next(KFIDX::DYAW) = yaw_dt;
     X_next(KFIDX::VX) = vx;
 
-    if(erp.getState() == "STOP" && bCalibrationDone)
+    if(erp.getState() == "STOP")
     {
         X_next(KFIDX::YAW) = X_curr(KFIDX::YAW);
         X_next(KFIDX::DYAW) = 0;
@@ -455,7 +456,7 @@ void Localizer::update()
             , gpsData(GPSIDX::V)
             , erp.getVelocity();
 
-    if (erp.getState() == "STOP" && bCalibrationDone)
+    if (erp.getState() == "STOP")
     {
         Z_(4) = 0;
         Z_(5) = 0;
@@ -473,6 +474,7 @@ void Localizer::update()
               << Z_(6) << " "
               << Z_(7) << " "
               << "\n";
+
     std::cout << "\t" << toDegree(tf2::getYaw(qYawBias)) << " " << toDegree(localHeading) << std::endl;
 
     wz_dt = 0;
@@ -556,6 +558,12 @@ void Localizer::update()
 
     // update kalman filter
 
+    // default
+    marker_filtered.color.r = 1.0f;
+    marker_filtered.color.g = 0.0f;
+    marker_filtered.color.b = 0.0f;
+    marker_filtered.color.a = 1.0;
+
     if (erp.getState() == "STOP")
     {
         // gps has big variance when stop
@@ -595,14 +603,6 @@ void Localizer::update()
             marker_filtered.color.g = 0.0f;
             marker_filtered.color.b = 1.0f;
             marker_filtered.color.a = 1.0;
-        }
-        else
-        {
-            marker_filtered.color.r = 1.0f;
-            marker_filtered.color.g = 0.0f;
-            marker_filtered.color.b = 0.0f;
-            marker_filtered.color.a = 1.0;
-
         }
     }
     if (kf_.update(Z_, C, R))

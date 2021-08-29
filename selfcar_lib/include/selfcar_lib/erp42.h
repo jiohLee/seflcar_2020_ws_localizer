@@ -79,7 +79,7 @@ private:
     bool breakEnable;
     bool velEnable;
     bool steerEnable;
-    bool encEbable;
+    bool encEnable;
 };
 
 #endif // ERP42_H

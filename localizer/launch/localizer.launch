@@ -1,11 +1,11 @@
 <launch>
   <!-- ochang -->
-  <!-- <node name="map_server" pkg="map_server" type="map_server" args="$(find localizer)/map/ochang_grid.yaml" >
-  </node> -->
+  <node name="map_server" pkg="map_server" type="map_server" args="$(find localizer)/map/ochang_grid.yaml" >
+  </node>
 
   <!-- k-city -->
-  <node name="map_server" pkg="map_server" type="map_server" args="$(find localizer)/map/global_map.yaml" >
-  </node>
+  <!-- <node name="map_server" pkg="map_server" type="map_server" args="$(find localizer)/map/global_map.yaml" >
+  </node> -->
 
   <node pkg="localizer" name="localizer" type="localizer" output="screen">
         <!--common parameter-->
@@ -23,12 +23,12 @@
         <param name="covariance_sample_num"         value="25"         type="int"/>
         
         <!-- k-city -->
-        <param name="utmOffset_x"    value="302533.174487"  type="double"/>
-        <param name="utmOffset_y"    value="4124215.34631"  type="double"/>
+        <!-- <param name="utmOffset_x"    value="302533.174487"  type="double"/>
+        <param name="utmOffset_y"    value="4124215.34631"  type="double"/> -->
 
         <!--ochang-->
-        <!-- <param name="utmOffset_x"    value="361001.412425"  type="double"/>
-        <param name="utmOffset_y"    value="4065821.07176"  type="double"/> -->
+        <param name="utmOffset_x"    value="361001.412425"  type="double"/>
+        <param name="utmOffset_y"    value="4065821.07176"  type="double"/>
 
         <!--test-->
         <!-- <param name="utmOffset_x"    value="0"  type="double"/>
