@@ -185,10 +185,6 @@ void ERP42::velCallback(const std_msgs::Int16::ConstPtr &msg)
     {
         state = IDX::STOP;
     }
-    else
-    {
-        state = IDX::GO;
-    }
 
     Eigen::MatrixXd Z_ = Eigen::MatrixXd::Zero(1,1);
     Z_ << vel.data / 10 * 1000.0 / 3600.0;
